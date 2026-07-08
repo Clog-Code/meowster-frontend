@@ -101,16 +101,26 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
           _applyEvent(event);
         },
       );
-    } on Object {
+    } on Object catch (error, stackTrace) {
       if (!mounted) return;
+      debugPrint('Agent stream error: $error');
+      debugPrintStack(stackTrace: stackTrace);
       setState(() {
         if (_currentAssistant != null) _messages.remove(_currentAssistant);
         _currentAssistant = null;
         _isSending = false;
+        _messages.add(
+          ChatMessage(
+            id: _newId(),
+            role: ChatRole.system,
+            content: 'Connection issue: ${_friendlyError(error)}',
+            isError: true,
+          ),
+        );
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Network unstable. Please try again.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyError(error))));
       return;
     }
 
@@ -125,6 +135,20 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
       _currentAssistant = null;
       _isSending = false;
     });
+  }
+
+  String _friendlyError(Object error) {
+    final text = error.toString();
+    if (text.contains('Connection refused')) {
+      return 'Backend is not reachable. Check AGENT_BASE_URL and that uvicorn is running.';
+    }
+    if (text.contains('Cleartext') || text.contains('CLEARTEXT')) {
+      return 'HTTP is blocked by the mobile platform. Enable local HTTP dev settings or use HTTPS.';
+    }
+    if (text.contains('401')) {
+      return 'Backend rejected the request. Check AGENT_PERCEPTION_TOKEN.';
+    }
+    return text.replaceFirst('Exception: ', '');
   }
 
   void _applyEvent(AgentStreamEvent event) {

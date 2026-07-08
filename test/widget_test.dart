@@ -26,6 +26,15 @@ void main() {
     expect(events[2].data['message'], 'failed');
   });
 
+  test('AgentApiClient stores optional perception token', () {
+    final client = AgentApiClient(
+      baseUri: Uri.parse('http://localhost:8000'),
+      perceptionToken: 'dev-token',
+    );
+
+    expect(client.perceptionToken, 'dev-token');
+  });
+
   testWidgets('app opens on the capture page with fallback camera UI', (
     tester,
   ) async {
@@ -166,7 +175,11 @@ void main() {
       find.textContaining('partial answer', findRichText: true),
       findsNothing,
     );
-    expect(find.text('Network unstable. Please try again.'), findsOneWidget);
+    expect(
+      find.textContaining('Connection issue:', findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.textContaining('network failed'), findsWidgets);
   });
 }
 

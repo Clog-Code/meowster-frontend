@@ -30,6 +30,15 @@
 	<string>Pet Agent uses the camera to capture short pet health moments for review.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Pet Agent lets you upload pet photos for agent review.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Pet Agent connects to the local development backend on your network.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -63,6 +63,15 @@ class AgentStreamEvent {
   final Map<String, dynamic> data;
 }
 
+class AgentConnectionException implements Exception {
+  const AgentConnectionException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class AgentSseParser {
   final StringBuffer _buffer = StringBuffer();
 
@@ -108,17 +117,22 @@ abstract class AgentStreamClient {
 }
 
 class AgentApiClient implements AgentStreamClient {
-  AgentApiClient({required this.baseUri});
+  AgentApiClient({required this.baseUri, this.perceptionToken = ''});
 
   factory AgentApiClient.fromEnvironment() {
     const configured = String.fromEnvironment(
       'AGENT_BASE_URL',
       defaultValue: 'http://localhost:8000',
     );
-    return AgentApiClient(baseUri: Uri.parse(configured));
+    const perceptionToken = String.fromEnvironment('AGENT_PERCEPTION_TOKEN');
+    return AgentApiClient(
+      baseUri: Uri.parse(configured),
+      perceptionToken: perceptionToken,
+    );
   }
 
   final Uri baseUri;
+  final String perceptionToken;
 
   @override
   Future<void> streamAgent({
@@ -127,23 +141,45 @@ class AgentApiClient implements AgentStreamClient {
     required void Function(AgentStreamEvent event) onEvent,
   }) async {
     final client = HttpClient();
+    final uri = baseUri.resolve(path);
+    client.connectionTimeout = const Duration(seconds: 12);
     try {
-      final request = await client.postUrl(baseUri.resolve(path));
+      final request = await client.postUrl(uri);
       request.headers.contentType = ContentType.json;
       request.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
+      if (path == '/perception' && perceptionToken.isNotEmpty) {
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer $perceptionToken',
+        );
+      }
       request.write(jsonEncode(payload));
 
       final response = await request.close();
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw HttpException('Request failed: ${response.statusCode}');
+        final body = await response.transform(utf8.decoder).join();
+        final detail = body.trim().isEmpty ? '' : ': ${body.trim()}';
+        throw AgentConnectionException(
+          'Backend request failed (${response.statusCode}) at $uri$detail',
+        );
       }
 
       final parser = AgentSseParser();
-      await for (final chunk in response.transform(utf8.decoder)) {
-        for (final event in parser.addChunk(chunk)) {
-          onEvent(event);
+      try {
+        await for (final chunk in response.transform(utf8.decoder)) {
+          for (final event in parser.addChunk(chunk)) {
+            onEvent(event);
+          }
         }
+      } on Object catch (error) {
+        throw AgentConnectionException(
+          'Backend stream disconnected at $uri: $error',
+        );
       }
+    } on AgentConnectionException {
+      rethrow;
+    } on SocketException catch (error) {
+      throw AgentConnectionException('Could not connect to $uri: $error');
     } finally {
       client.close();
     }
