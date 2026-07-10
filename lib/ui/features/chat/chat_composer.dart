@@ -173,7 +173,12 @@ class _TypingComposer extends StatelessWidget {
           IconButton.filled(
             tooltip: isSending ? 'Stop response' : 'Send',
             visualDensity: compact ? VisualDensity.compact : null,
-            onPressed: isSending ? onStop : onSend,
+            onPressed: isSending
+                ? onStop
+                : () {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    onSend();
+                  },
             icon: Icon(isSending ? Icons.stop : Icons.arrow_upward),
           ),
           const SizedBox(width: 5),
