@@ -1136,10 +1136,22 @@ class AssistantResponseBlock extends StatelessWidget {
                 const SizedBox(height: 8),
               ],
               if (message.content.isNotEmpty && message.capture == null)
-                MarkdownBody(
-                  data: message.content,
-                  selectable: true,
-                  styleSheet: _chatMarkdownStyle(context),
+                AnimatedOpacity(
+                  opacity: message.isStreaming ? 0 : 1,
+                  duration: const Duration(milliseconds: 900),
+                  curve: Curves.easeOutCubic,
+                  child: AnimatedSlide(
+                    offset: message.isStreaming
+                        ? const Offset(0, 0.01)
+                        : Offset.zero,
+                    duration: const Duration(milliseconds: 900),
+                    curve: Curves.easeOutCubic,
+                    child: MarkdownBody(
+                      data: message.content,
+                      selectable: true,
+                      styleSheet: _chatMarkdownStyle(context),
+                    ),
+                  ),
                 ),
               if (_showCopyAction)
                 Padding(
