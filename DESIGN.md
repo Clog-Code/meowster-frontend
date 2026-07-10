@@ -26,17 +26,24 @@ Copy stays pet-neutral. Cats are the MVP default, but screens should say "Pet" u
 ## Chat Page
 
 - Main surface is dark and compact, with a centered max-width layout on large windows.
-- Input bar has camera/gallery, voice, text field, and send controls.
-- Voice opens a pending live-call sheet until STT/TTS endpoints are ready.
-- Tool execution is rendered as dark timeline chips attached to the assistant message.
-- Final answers render as markdown-ready assistant bubbles.
-- HITL snapshots render as elevated approval cards with Approve, Modify, and Cancel.
+- The composer is split into a fixed push-to-talk control and a flexible text surface. The text field begins at one line and expands upward to six lines.
+- Holding the microphone requests native speech permission and replaces the text surface with a reactive waveform and live transcript. Releasing returns the transcript as an editable draft; it never auto-sends.
+- The native recognizer restarts short platform sessions while the control remains held, accepting that some Android devices may introduce a brief gap or system beep.
+- Gallery and send/stop controls stay inside the typing surface. Starting push-to-talk stops response audio first.
+- User messages render as compact right-aligned bubbles.
+- Assistant responses render as full-width answer blocks without a surrounding bubble, so text and structured cards read like page content.
+- Tool execution is rendered as collapsed process metadata inside the assistant answer block.
+- Recommendation, location, pet moment, and system error surfaces remain 8px cards.
+- HITL snapshots live behind the app-bar checklist icon and render as elevated approval/checklist cards in a sheet.
+- Checklist sheets are draggable and scrollable so expanded task lists never overflow.
+- Completed assistant answers auto-read through Kokoro unless the persistent app-wide preference is muted. Copy and mute/read-aloud actions sit together below the answer.
+- Location permission cards appear only below completed assistant output, never while the answer is still streaming.
 
 ## AG-UI States
 
-- `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END`: stream into one assistant bubble.
+- `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END`: stream into one assistant answer block.
 - `TOOL_CALL_START`: append a running timeline chip.
 - `TOOL_CALL_RESULT`: mark the latest running chip as complete and show result text.
-- `STATE_SNAPSHOT`: render todos or action approval cards inline.
+- `STATE_SNAPSHOT`: update the app-bar checklist sheet with todos or action approvals.
 - `RUN_ERROR`: show an error system bubble.
 - Broken streams before completion remove the incomplete assistant bubble and show the network snackbar.
