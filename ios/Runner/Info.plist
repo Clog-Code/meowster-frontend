@@ -26,12 +26,6 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>Pet Agent uses the camera to capture short pet health moments for review.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Pet Agent lets you upload pet photos for agent review.</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Pet Agent connects to the local development backend on your network.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -39,6 +33,18 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Pet Agent uses the camera to capture short pet health moments for review.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Pet Agent connects to the local development backend on your network.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Pet Agent uses your location only when you allow it to find nearby clinics and pet shops.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Pet Agent uses the microphone to turn your spoken question into editable chat text.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Pet Agent lets you upload pet photos for agent review.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Pet Agent uses speech recognition to transcribe your pet care questions into the chat input.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
