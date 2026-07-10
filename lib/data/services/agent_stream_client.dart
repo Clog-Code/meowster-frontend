@@ -1,15 +1,25 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../../domain/models/pet_capture_result.dart';
+
 enum ChatRole { user, assistant, system }
 
 enum ToolStatus { running, done }
 
 class ToolDecoration {
-  ToolDecoration({required this.name, required this.status, this.content = ''});
+  ToolDecoration({
+    required this.name,
+    required this.status,
+    this.id,
+    this.args = '',
+    this.content = '',
+  });
 
+  final String? id;
   final String name;
   ToolStatus status;
+  String args;
   String content;
 }
 
@@ -25,6 +35,9 @@ class HitlCardData {
   final String body;
   final List<HitlTodo> todos;
   final String? payloadPreview;
+
+  bool get isEmpty =>
+      todos.isEmpty && body.trim().isEmpty && payloadPreview == null;
 }
 
 class HitlTodo {
@@ -39,7 +52,9 @@ class ChatMessage {
     required this.id,
     required this.role,
     this.content = '',
+    this.agentContext,
     this.attachmentLabel,
+    this.capture,
     List<ToolDecoration>? tools,
     this.hitlCard,
     this.isStreaming = false,
@@ -49,7 +64,9 @@ class ChatMessage {
   final String id;
   final ChatRole role;
   String content;
+  String? agentContext;
   String? attachmentLabel;
+  PetCaptureResult? capture;
   final List<ToolDecoration> tools;
   HitlCardData? hitlCard;
   bool isStreaming;
@@ -190,6 +207,7 @@ Map<String, dynamic> buildRunAgentInput({
   required String threadId,
   required String runId,
   required List<ChatMessage> messages,
+  List<Map<String, dynamic>> context = const [],
 }) {
   return {
     'threadId': threadId,
@@ -206,12 +224,15 @@ Map<String, dynamic> buildRunAgentInput({
           (message) => {
             'id': message.id,
             'role': message.role == ChatRole.user ? 'user' : 'assistant',
-            'content': message.content,
+            'content': [
+              message.content,
+              if (message.agentContext != null) message.agentContext!,
+            ].where((part) => part.trim().isNotEmpty).join('\n\n'),
           },
         )
         .toList(),
     'tools': [],
-    'context': [],
+    'context': context,
     'forwardedProps': {},
   };
 }
@@ -226,18 +247,29 @@ HitlCardData cardFromSnapshot(Object? snapshot) {
 
   final todos = snapshot['todos'];
   if (todos is List) {
+    final parsedTodos = todos
+        .map((todo) {
+          if (todo is Map<String, dynamic>) {
+            final content = todo['content']?.toString().trim() ?? '';
+            if (content.isEmpty) return null;
+            return HitlTodo(
+              content: content,
+              completed: todo['status']?.toString() == 'completed',
+            );
+          }
+          final content = todo.toString().trim();
+          if (content.isEmpty) return null;
+          return HitlTodo(content: content, completed: false);
+        })
+        .nonNulls
+        .toList();
+
     return HitlCardData(
       title: 'Agent checklist',
-      body: 'The agent is working through these steps.',
-      todos: todos.map((todo) {
-        if (todo is Map<String, dynamic>) {
-          return HitlTodo(
-            content: todo['content']?.toString() ?? 'Task',
-            completed: todo['status']?.toString() == 'completed',
-          );
-        }
-        return HitlTodo(content: todo.toString(), completed: false);
-      }).toList(),
+      body: parsedTodos.isEmpty
+          ? ''
+          : 'The agent is working through these steps.',
+      todos: parsedTodos,
     );
   }
 
