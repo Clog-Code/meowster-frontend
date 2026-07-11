@@ -65,12 +65,6 @@ class DemoPetStreakClient implements PetStreakClient {
         day(-2, 1, 'normal'),
         day(-1, 1, 'curious'),
         day(0, 2, 'playful'),
-        day(3, 1, 'happy'),
-        day(6, 1, 'normal'),
-        day(9, 2, 'calm'),
-        day(13, 1, 'sad'),
-        day(17, 3, 'playful'),
-        day(20, 1, 'curious'),
       ],
     );
   }
