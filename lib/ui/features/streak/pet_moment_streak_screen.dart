@@ -152,6 +152,8 @@ class _StreakContentState extends State<_StreakContent> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
       children: [
+        const _UserProfileCard(),
+        const SizedBox(height: 18),
         _HeroStreak(summary: summary),
         const SizedBox(height: 18),
         Row(
@@ -196,6 +198,78 @@ class _StreakContentState extends State<_StreakContent> {
         ),
         const SizedBox(height: 24),
         _MomentReel(summary: summary, monthStart: _visibleMonth),
+      ],
+    );
+  }
+}
+
+class _UserProfileCard extends StatelessWidget {
+  const _UserProfileCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: PetTheme.panel,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0x24FFFFFF)),
+      ),
+      child: const Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Profile', style: TextStyle(fontWeight: FontWeight.w800)),
+            SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _ProfileDetail(
+                    icon: Icons.person_outline,
+                    value: 'Dickson Lai',
+                  ),
+                ),
+                SizedBox(width: 20),
+                Expanded(
+                  child: _ProfileDetail(
+                    icon: Icons.phone_outlined,
+                    value: '+65 8xxx 9460',
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 8),
+            _ProfileDetail(
+              icon: Icons.location_on_outlined,
+              value: '14000 Bukit Mertajam, Pulau Pinang',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileDetail extends StatelessWidget {
+  const _ProfileDetail({required this.icon, required this.value});
+
+  final IconData icon;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: PetTheme.aqua),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: PetTheme.muted),
+          ),
+        ),
       ],
     );
   }
