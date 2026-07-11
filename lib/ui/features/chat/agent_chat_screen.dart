@@ -277,9 +277,19 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
           break;
         case 'TEXT_MESSAGE_CONTENT':
           _currentAssistant ??= _startAssistantMessage();
-          _currentAssistant!.content += event.data['delta']?.toString() ?? '';
-          if (_looksLikeAgentActionLeak(_currentAssistant!.content)) {
-            _currentAssistant!.content = '';
+          final streamingAssistant = _currentAssistant!;
+          streamingAssistant.content += event.data['delta']?.toString() ?? '';
+          if (!streamingAssistant.leakCheckResolved) {
+            if (_looksLikeAgentActionLeak(streamingAssistant.content)) {
+              streamingAssistant.content = '';
+            } else if (streamingAssistant.content.trim().length >
+                _leakCheckWindowChars) {
+              // Past this point the message is clearly real prose, not a
+              // leaked raw payload. Stop scanning it so later content can
+              // never trigger a wipe (this is what caused the streaming
+              // glitch where text would flash and disappear mid-reply).
+              streamingAssistant.leakCheckResolved = true;
+            }
           }
           break;
         case 'TEXT_MESSAGE_END':
@@ -377,6 +387,11 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     }
     return null;
   }
+
+  /// Max chars of accumulated content over which we still consider it
+  /// plausible that the whole message is a leaked raw tool/command payload.
+  /// Once a message exceeds this, treat it as genuine prose and never wipe.
+  static const int _leakCheckWindowChars = 80;
 
   bool _looksLikeAgentActionLeak(String content) {
     final normalized = content.trimLeft().toLowerCase();
