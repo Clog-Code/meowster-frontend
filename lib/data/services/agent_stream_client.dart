@@ -71,6 +71,15 @@ class ChatMessage {
   HitlCardData? hitlCard;
   bool isStreaming;
   bool isError;
+
+  /// Once true, the agent-action-leak heuristic is no longer applied to
+  /// this message. Without this, a message that grows long enough to
+  /// coincidentally contain leak-like substrings (e.g. a normal reply that
+  /// happens to mention both "todos" and "status") would have its entire
+  /// accumulated content wiped mid-stream, producing a visible glitch where
+  /// text flashes and disappears. The check is only meaningful while the
+  /// message is still short enough to plausibly *be* a raw leaked payload.
+  bool leakCheckResolved = false;
 }
 
 class AgentStreamEvent {
