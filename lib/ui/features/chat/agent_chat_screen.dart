@@ -1377,7 +1377,7 @@ class _AgentActivityPanelState extends State<AgentActivityPanel> {
     final completeCount = widget.tools
         .where((tool) => tool.status == ToolStatus.done)
         .length;
-    final expanded = _expandedOverride ?? false;
+    final expanded = _expandedOverride ?? true;
 
     return Container(
       decoration: BoxDecoration(
