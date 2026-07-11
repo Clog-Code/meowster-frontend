@@ -1,3 +1,5 @@
+import 'pet_tracking_sample.dart';
+
 enum CaptureMediaKind { video, image, demo }
 
 class PetCaptureResult {
@@ -7,8 +9,10 @@ class PetCaptureResult {
     required this.emotion,
     required this.healthFlags,
     required this.sourceLabel,
+    this.petId = 'pet-01',
     this.emotionConfidence,
     this.emotionProbabilities,
+    this.trackingSamples = const [],
     this.path,
   });
 
@@ -17,8 +21,10 @@ class PetCaptureResult {
   final String emotion;
   final List<String> healthFlags;
   final String sourceLabel;
+  final String petId;
   final double? emotionConfidence;
   final Map<String, double>? emotionProbabilities;
+  final List<PetTrackingSample> trackingSamples;
   final String? path;
 
   String get attachmentLabel {
@@ -35,8 +41,7 @@ class PetCaptureResult {
 
   Map<String, dynamic> get mockPetProfile {
     return {
-      'pet_id': 'pet-01',
-      'name': 'Mochi',
+      'pet_id': petId,
       'species': species,
       'breed': species == 'cat' ? 'Domestic Shorthair' : null,
       'weight_kg': species == 'cat' ? 4.2 : null,
@@ -52,7 +57,7 @@ class PetCaptureResult {
 
   Map<String, dynamic> toPerceptionPayload(String threadId) {
     return {
-      'pet_id': 'pet-01',
+      'pet_id': petId,
       'pet_profile': mockPetProfile,
       'species': species,
       'emotion': emotion,
