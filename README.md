@@ -1,4 +1,5 @@
 ### mingjia's Command
+
 ```bash
 flutter run \
   --dart-define=AGENT_BASE_URL=http://192.168.0.101:8000 \
@@ -44,6 +45,7 @@ Start the backend agent from the sibling `amd-pet-agentic` project:
 ```bash
 cd ../amd-pet-agentic
 cp .env.example .env
+source venv/bin/activate
 uv sync
 uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -54,8 +56,9 @@ Start the Kokoro TTS service from the sibling `amd-pet-tts` project:
 
 ```bash
 cd ../amd-pet-tts
+uv sync
 source venv/bin/activate
-uvicorn main:app --reload --host 0.0.0.0 --port 8002
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8002
 ```
 
 Run the Flutter app on the iOS simulator:
@@ -188,12 +191,12 @@ The visual model service is expected to expose:
 
 Use the right host for the runtime:
 
-| Runtime | Backend URL when backend runs on your computer |
-| --- | --- |
-| iOS simulator | `http://localhost:8000` |
-| Android emulator | `http://10.0.2.2:8000` |
-| Physical iPhone | `http://<YOUR_COMPUTER_LAN_IP>:8000` |
-| Physical Android phone | `http://<YOUR_COMPUTER_LAN_IP>:8000` |
+| Runtime                | Backend URL when backend runs on your computer |
+| ---------------------- | ---------------------------------------------- |
+| iOS simulator          | `http://localhost:8000`                      |
+| Android emulator       | `http://10.0.2.2:8000`                       |
+| Physical iPhone        | `http://<YOUR_COMPUTER_LAN_IP>:8000`         |
+| Physical Android phone | `http://<YOUR_COMPUTER_LAN_IP>:8000`         |
 
 Why they differ:
 
