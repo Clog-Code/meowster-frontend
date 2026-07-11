@@ -1,13 +1,3 @@
-### mingjia's Command
-
-```bash
-flutter run \
-  --dart-define=AGENT_BASE_URL=http://192.168.0.101:8000 \
-  --dart-define=VISUAL_MODEL_BASE_URL=http://192.168.0.101:8001 \
-  --dart-define=TTS_BASE_URL=http://192.168.0.101:8002 \
-  --dart-define=MOCK_PET_STREAKS=true
-```
-
 # AMD Pet Frontend
 
 Mobile Flutter frontend for the Pet Mental & Physical Health Agent. The app is built for the AMD Developer Hackathon ACT II project and focuses on capturing pet moments, especially cats for the MVP, then handing structured perception events to an agentic backend over AG-UI streams.
@@ -40,6 +30,15 @@ Install Flutter, then fetch dependencies:
 flutter pub get
 ```
 
+If you are running the app on a physical Android device, forward the backend
+ports from the device to the host machine:
+
+```bash
+adb reverse tcp:8000 tcp:8000
+adb reverse tcp:8001 tcp:8001
+adb reverse tcp:8002 tcp:8002
+```
+
 Start the backend agent from the sibling `amd-pet-agentic` project:
 
 ```bash
@@ -70,7 +69,6 @@ uv sync
 source venv/bin/activate
 uv run uvicorn main:app --reload --host 0.0.0.0 --port 8002
 ```
-
 
 Then pass both backend URLs when running the app:
 
