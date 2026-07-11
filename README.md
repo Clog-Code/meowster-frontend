@@ -110,8 +110,9 @@ project on a separate port:
 
 ```bash
 cd ../amd-pet-visual-cnn
+uv sync
 source venv/bin/activate
-uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
 Then pass both backend URLs when running the app:
