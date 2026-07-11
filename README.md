@@ -52,6 +52,16 @@ uv run uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
 Open `http://localhost:8000/healthz` on the backend machine to confirm it is alive.
 
+Start the visual model emotion service from the sibling `amd-pet-visual-cnn`
+project on a separate port:
+
+```bash
+cd ../amd-pet-visual-cnn
+uv sync
+source venv/bin/activate
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+```
+
 Start the Kokoro TTS service from the sibling `amd-pet-tts` project:
 
 ```bash
@@ -60,6 +70,18 @@ uv sync
 source venv/bin/activate
 uv run uvicorn main:app --reload --host 0.0.0.0 --port 8002
 ```
+
+
+Then pass both backend URLs when running the app:
+
+```bash
+flutter run \
+  --dart-define=AGENT_BASE_URL=http://localhost:8000 \
+  --dart-define=VISUAL_MODEL_BASE_URL=http://localhost:8001 \
+  --dart-define=TTS_BASE_URL=http://localhost:8002
+```
+
+---
 
 Run the Flutter app on the iOS simulator:
 
@@ -105,24 +127,7 @@ flutter run \
   --dart-define=TTS_BASE_URL=http://192.168.1.42:8002
 ```
 
-Start the visual model emotion service from the sibling `amd-pet-visual-cnn`
-project on a separate port:
-
-```bash
-cd ../amd-pet-visual-cnn
-uv sync
-source venv/bin/activate
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
-```
-
-Then pass both backend URLs when running the app:
-
-```bash
-flutter run \
-  --dart-define=AGENT_BASE_URL=http://localhost:8000 \
-  --dart-define=VISUAL_MODEL_BASE_URL=http://localhost:8001 \
-  --dart-define=TTS_BASE_URL=http://localhost:8002
-```
+---
 
 Run checks:
 
