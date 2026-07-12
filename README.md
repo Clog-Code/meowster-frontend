@@ -1,26 +1,21 @@
 # AMD Pet Frontend
 
-Mobile Flutter frontend for the Pet Mental & Physical Health Agent. The app is built for the AMD Developer Hackathon ACT II project and focuses on capturing pet moments, especially cats for the MVP, then handing structured perception events to an agentic backend over AG-UI streams.
-
-The app opens into a camera-first capture experience, then moves into an agent chat where users can text, upload pet media, view tool execution, and approve agent actions such as finding clinics or care next steps.
+Mobile Flutter frontend for the Pet Mental & Physical Health Agent. Built for the AMD Developer Hackathon ACT II project. The app opens into an isometric pet room with animated cat sprites, then lets users capture pet moments (photo/video), analyze emotions via a visual LLM, chat with an AI pet health agent over AG-UI SSE streams, and track daily streaks on a calendar.
 
 ## Features
 
-- Mobile-first Flutter app for iOS and Android.
-- Immersive capture screen with camera, gallery upload, demo capture fallback, 10-second recording cap, and pet health overlay labels.
-- Agentic chat screen with an expanding text composer, gallery entry point, hold-to-talk native dictation, live transcript waveform, and Kokoro response playback.
-- AG-UI-compatible streaming client for backend `POST /agent` and `POST /perception`.
-- Live rendering for AG-UI events:
-  - `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END`
-  - `TOOL_CALL_START`, `TOOL_CALL_ARGS`, `TOOL_CALL_END`, `TOOL_CALL_RESULT`
-  - `STATE_SNAPSHOT`
-  - `RUN_ERROR`
-- Collapsible agent activity timeline for tool work such as clinic search or knowledge lookup.
-- Suggestion chips for clinic, shop, provider, or care recommendations returned by tools.
-- Human-in-the-loop cards for todos and approval flows, with a local dismiss action.
-- Chat menu drawer with the current thread and a placeholder for future backend thread history.
-- Pet-neutral frontend model with `species` included in perception payloads.
-- Conditional Dart bootstrap so accidental `dart lib/main.dart` runs show a helpful message instead of crashing.
+- **Isometric Pet Room Home** — A 2.5D cozy bedroom that changes with time of day (morning, noon, sunset, night). Animated cat sprites walk, sit, sleep, and lick with 8 action states. Pinch-to-zoom/pan. Tap a pet to reveal a glassmorphism stat card (species, mood, breed, weight, conditions, clinic, food brand).
+- **Immersive Capture Screen** — Full-screen camera with photo tap, 10-second video recording (long-press with zoom via vertical drag), gallery upload (photo or video), tap-to-focus, zoom multipliers (.5x–5x), and demo capture fallback. Preview replay shows ML emotion tags (species, emotion, confidence). Concurrent visual LLM prediction and Google Lens-style upload.
+- **Pet Moment Streak Calendar** — Monthly calendar with day cells colored by emotion (healthy/warning/unhealthy), weekly bar chart, usage ring, and a moment reel with photo/video previews. Streak metrics (current, longest, monthly count) from the backend or mock data.
+- **Agentic Chat** — SSE-streaming AI conversation with markdown rendering, tool call timeline (collapsible, with step-by-step status), recommendation cards (clinics, shops), HITL approval cards (checklist + send/cancel), and location permission prompts.
+- **Chat Composer** — Expandable text field (1–6 lines), smart mic button (tap-to-confirm vs hold-to-talk), gallery attachment upload, send/stop. Voice dictation with live waveform and editable transcript on release.
+- **Add Pet Form** — Responsive dialog with name, species dropdown (Cat/Dog/Bird/Other + custom), breed, life stage (Baby/Young/Adult/Senior), weight (decimal, kg suffix), photo picker, and optional care details (conditions, clinic, food brand, delivery address). Can skip and use "Chat with Agent" instead.
+- **Owner Profile** — Editable name, phone, and address dialog.
+- **AG-UI Streaming** — Full SSE event support: `TEXT_MESSAGE_START/CONTENT/END`, `TOOL_CALL_START/ARGS/END/RESULT`, `STATE_SNAPSHOT`, `RUN_ERROR`.
+- **Agent Auto-Read** — Completed assistant answers read aloud via Kokoro TTS. Mute persists across restarts via `SharedPreferences`.
+- **Pet-Neutral Frontend** — `species` key included in every perception payload. All UI uses "Pet" unless the backend supplies a species label.
+- **Local Moment Storage** — Captured media copied to app documents directory with a JSON index for offline access.
+- **Conditional Dart Bootstrap** — `dart lib/main.dart` prints instructions instead of crashing.
 
 ## Quickstart
 
@@ -222,8 +217,13 @@ Expected backend endpoints:
 
 - `POST /agent` for normal chat runs.
 - `POST /perception` for pet media/perception events.
-- `GET /pet-moments/streaks?pet_id=pet-01` for current streak and monthly
-  pet moment history.
+- `POST /upload` for multipart file uploads (visual search).
+- `GET /pet-profiles` ─ list registered pets.
+- `GET /pet-profile/{id}` ─ single pet profile.
+- `POST /pet-profile` ─ create new pet profile.
+- `GET /pet-moments/streaks?pet_id=pet-01` ─ streak summary and monthly history.
+- `GET /threads` ─ conversation thread list.
+- `GET /threads/{id}/messages` ─ thread message history.
 
 `/agent` and `/perception` are expected to return AG-UI-style Server-Sent
 Events with `data:` JSON blocks. `/pet-moments/streaks` returns normal JSON:
@@ -250,47 +250,83 @@ Events with `data:` JSON blocks. `/pet-moments/streaks` returns normal JSON:
 lib/
   main.dart                         # Entrypoint with conditional bootstrap
   app/
-    bootstrap_flutter.dart          # Real Flutter app bootstrap
-    bootstrap_stub.dart             # Friendly plain-Dart fallback
-    pet_agent_app.dart              # MaterialApp setup
+    bootstrap_flutter.dart          # Flutter bootstrap (env vars, DI wiring)
+    bootstrap_stub.dart             # Standalone Dart VM stub
+    pet_agent_app.dart              # Root MaterialApp with theme
   data/
     services/
-      agent_stream_client.dart      # AG-UI SSE parser and HTTP streaming client
-      speech_to_text_service.dart   # Native dictation and continuous segment merging
-      text_to_speech_service.dart   # Kokoro playback and persisted auto-read preference
+      agent_stream_client.dart      # AG-UI SSE parser, chat models, agent API client
+      local_moment_storage.dart     # Persists captured media to app documents
+      location_service.dart         # GPS location via geolocator
+      pet_streak_client.dart        # Streak API client (production + demo)
+      speech_to_text_service.dart   # Native dictation, transcript accumulator
+      text_to_speech_service.dart   # Kokoro TTS playback, auto-read prefs
+      visual_llm_client.dart        # Visual emotion prediction client
   domain/
     models/
-      pet_capture_result.dart       # Capture/perception domain model
+      camera_zoom_state.dart        # Zoom math + debounced request coordinator
+      owner_profile.dart            # Owner name/phone/address
+      pet_capture_result.dart       # Capture result, perception payload builder
+      pet_streak_summary.dart       # Streak day/summary models
   ui/
     core/
-      pet_theme.dart                # Shared colors and app theme
+      pet_theme.dart                # Dark theme, accent colors, radii
     features/
       capture/
         capture_screen.dart         # Camera/gallery/demo capture flow
+        view_models/
+          capture_view_model.dart           # Capture UI state management
+        views/
+          camera_preview_cover.dart         # Camera preview sizing
       chat/
-        agent_chat_screen.dart      # Agent chat, timeline, HITL cards
-        chat_composer.dart          # Expanding text and hold-to-talk composer
+        agent_chat_screen.dart      # Agent chat, timeline, HITL cards, recommendations
+        chat_composer.dart          # Text field, smart mic, voice panel, attachment
+      home/
+        models/
+          pet_room_state.dart       # Room assets, pet state, standby actions
+        view_models/
+          isometric_home_view_model.dart    # Home logic, pet animations, API fetches
+        views/
+          isometric_home_page.dart          # Isometric room, pet sprites, stat card, add pet form
+        widgets/
+          owner_profile_content.dart        # Owner profile edit dialog
 
-android/                            # Android mobile target
-ios/                                # iOS mobile target
+android/                          # Android mobile target
+ios/                              # iOS mobile target
 test/
-  widget_test.dart                  # Parser and UI behavior tests
-  data/services/                    # STT transcript and Kokoro helper unit tests
+  widget_test.dart                # Full integration tests (capture, chat, streaks)
+  data/services/
+    speech_to_text_service_test.dart       # STT transcript accumulator tests
+    text_to_speech_service_test.dart       # TTS helper unit tests
+  domain/models/
+    camera_zoom_state_test.dart            # Zoom math tests
+  ui/features/
+    capture/
+      camera_preview_cover_test.dart       # Preview sizing tests
+      capture_view_model_test.dart         # Capture VM state tests
+    chat/
+      chat_composer_test.dart              # Composer widget tests
+    home/
+      isometric_home_page_test.dart        # Home page, add pet form tests
+      isometric_home_view_model_test.dart  # Home VM animation tests
 docs/
   adr/
     ADR-001-agent-chat-ui-and-history-api.md
   glossary.md
-DESIGN.md                           # Visual and interaction design notes
-AGENT.md                            # Product/system spec for the agent frontend
+DESIGN.md                         # Visual and interaction design notes
+AGENT.md                          # Product/system spec
 ```
 
 ## Current MVP Notes
 
 - Gallery images and recorded videos can be analyzed by the visual CNN service; if it is unavailable, capture falls back to review-mode perception.
 - Voice input uses device-native dictation; it is not backend audio streaming and may inherit platform pause limits.
-- Previous chat history is represented in the UI, but the backend still needs thread list/message read APIs before it can be connected.
-- The app currently targets mobile only; desktop and web platform folders were removed to keep the project focused.
+- Previous chat history is represented in the UI drawer, but the backend thread list/message read APIs need to be connected.
+- The app currently targets mobile only; desktop and web platform folders were removed.
 - Camera/gallery permissions are configured for Android and iOS.
+- Pet streak calendar can operate with mock data via `--dart-define=MOCK_PET_STREAKS=true`.
+- Pet profiles can be created via the Add Pet dialog or the "Chat with Agent" flow.
+- Demo captures exercise the agent without creating backend pet-moment rows or incrementing streaks.
 
 ## Team Handoff
 
