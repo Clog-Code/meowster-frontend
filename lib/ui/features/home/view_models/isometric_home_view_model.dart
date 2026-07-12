@@ -207,7 +207,6 @@ class IsometricHomeViewModel extends ChangeNotifier {
       for (final pet in petStates) {
         loadPetProfile(pet.id);
       }
-      _loadStreak();
     } on AgentConnectionException {
       // Backend unavailable.
     }
@@ -220,7 +219,7 @@ class IsometricHomeViewModel extends ChangeNotifier {
   Future<void> _loadStreak() async {
     final c = streakClient;
     if (c == null) return;
-    final petId = _state.selectedPetId ?? _state.pets.firstOrNull?.id;
+    final petId = _state.selectedPetId;
     if (petId == null) return;
     try {
       final summary = await c.fetchStreakSummary(petId: petId);
