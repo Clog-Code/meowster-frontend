@@ -732,7 +732,7 @@ void main() {
 
     expect(client.paths, ['/perception']);
     expect(client.payloads.single['emotion'], 'distress');
-    expect(find.text('Capture The Pet Moment'), findsOneWidget);
+    expect(find.text('Capture The Meowment'), findsOneWidget);
     expect(find.text('SCANNING FOR PET'), findsOneWidget);
     expect(find.byType(AgentChatScreen), findsNothing);
   });

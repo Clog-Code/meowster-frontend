@@ -267,42 +267,17 @@ class _CaptureScreenState extends State<CaptureScreen>
       }
 
       try {
-        final prediction = await widget.visualLlmClient.predictVideoEmotion(
+        await _analyzeVideo(
           File(file.path),
+          sourceLabel: 'Captured video',
+          trackingSamples: trackingSamples,
         );
-        await _setPreview(
-          PetCaptureResult(
-            kind: CaptureMediaKind.video,
-            species: 'cat',
-            emotion: prediction.predictedEmotion,
-            emotionConfidence: prediction.confidence,
-            emotionProbabilities: prediction.detailBreakdown,
-            trackingSamples: trackingSamples,
-            healthFlags: const [],
-            sourceLabel: 'Captured video',
-            path: file.path,
-          ),
-        );
-      } on Object catch (error) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Video emotion check unavailable. Using review mode instead. ${_friendlyVisualError(error)}',
-            ),
-          ),
-        );
-        await _setPreview(
-          PetCaptureResult(
-            kind: CaptureMediaKind.video,
-            species: 'cat',
-            emotion: 'curious',
-            healthFlags: const ['needs review'],
-            trackingSamples: trackingSamples,
-            sourceLabel: 'Captured video',
-            path: file.path,
-          ),
-        );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _analyzingVideo = false;
+          });
+        }
       }
     } on Object catch (error) {
       if (!mounted) return;
@@ -311,10 +286,49 @@ class _CaptureScreenState extends State<CaptureScreen>
       if (mounted) {
         setState(() {
           _recording = false;
-          _analyzingVideo = false;
         });
       }
     }
+  }
+
+  Future<void> _pickFromGallery() async {
+    if (_recording || _analyzingImage || _analyzingVideo) return;
+    final mediaType = await showModalBottomSheet<_GalleryMediaType>(
+      context: context,
+      backgroundColor: const Color(0xFF1A1F24),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_outlined, color: PetTheme.ivory),
+                title: const Text(
+                  'Upload photo',
+                  style: TextStyle(color: PetTheme.ivory),
+                ),
+                onTap: () => Navigator.of(context).pop(_GalleryMediaType.image),
+              ),
+              ListTile(
+                leading: const Icon(Icons.videocam_outlined, color: PetTheme.ivory),
+                title: const Text(
+                  'Upload video',
+                  style: TextStyle(color: PetTheme.ivory),
+                ),
+                onTap: () => Navigator.of(context).pop(_GalleryMediaType.video),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (mediaType == null) return;
+
+    if (mediaType == _GalleryMediaType.image) {
+      await _pickImage();
+      return;
+    }
+    await _pickVideo();
   }
 
   Future<void> _pickImage() async {
@@ -326,6 +340,21 @@ class _CaptureScreenState extends State<CaptureScreen>
       if (image == null) return;
 
       await _analyzeImage(File(image.path), sourceLabel: 'Uploaded image');
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _cameraError = _cameraMessage(error));
+    }
+  }
+
+  Future<void> _pickVideo() async {
+    try {
+      final video = await _picker.pickVideo(
+        source: ImageSource.gallery,
+        maxDuration: const Duration(seconds: 10),
+      );
+      if (video == null) return;
+
+      await _analyzeVideo(File(video.path), sourceLabel: 'Uploaded video');
     } on Object catch (error) {
       if (!mounted) return;
       setState(() => _cameraError = _cameraMessage(error));
@@ -407,6 +436,57 @@ class _CaptureScreenState extends State<CaptureScreen>
       }
     } finally {
       if (mounted) setState(() => _analyzingImage = false);
+    }
+  }
+
+  Future<void> _analyzeVideo(
+    File video, {
+    required String sourceLabel,
+    List<PetTrackingSample> trackingSamples = const [],
+  }) async {
+    try {
+      if (mounted) {
+        setState(() {
+          _analyzingVideo = true;
+          _cameraError = null;
+        });
+      }
+      final prediction = await widget.visualLlmClient.predictVideoEmotion(video);
+      await _setPreview(
+        PetCaptureResult(
+          kind: CaptureMediaKind.video,
+          species: 'cat',
+          emotion: prediction.predictedEmotion,
+          emotionConfidence: prediction.confidence,
+          emotionProbabilities: prediction.detailBreakdown,
+          trackingSamples: trackingSamples,
+          healthFlags: const [],
+          sourceLabel: sourceLabel,
+          path: video.path,
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Video emotion check unavailable. Using review mode instead. ${_friendlyVisualError(error)}',
+          ),
+        ),
+      );
+      await _setPreview(
+        PetCaptureResult(
+          kind: CaptureMediaKind.video,
+          species: 'cat',
+          emotion: 'curious',
+          healthFlags: const ['needs review'],
+          trackingSamples: trackingSamples,
+          sourceLabel: sourceLabel,
+          path: video.path,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _analyzingVideo = false);
     }
   }
 
@@ -868,7 +948,7 @@ class _CaptureScreenState extends State<CaptureScreen>
                                 recordingProgress: _recordingProgressController,
                                 onDividerSwipeEnd: _revealZoomFromDivider,
                                 onZoomPreset: _selectZoomPreset,
-                                onGallery: _pickImage,
+                                onGallery: _pickFromGallery,
                                 onShutterTap: _takePhoto,
                                 onRecordStart: (details) =>
                                     unawaited(_beginRecordGesture(details)),
@@ -1469,7 +1549,7 @@ class _CaptureModeUi extends StatelessWidget {
                 child: Column(
                   children: [
                     Text(
-                      'Capture The Pet Moment',
+                      'Capture The Meowment',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: PetTheme.ivory,
@@ -1678,8 +1758,8 @@ class _StoryCaptureControls extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         _RoundIconButton(
-          tooltip: analyzing ? 'Analyzing pet moment' : 'Upload picture',
-          icon: analyzing ? Icons.hourglass_top : Icons.photo_library_outlined,
+          tooltip: analyzing ? 'Analyzing pet moment' : 'Upload from gallery',
+          icon: analyzing ? Icons.hourglass_top : Icons.add,
           onPressed: analyzing || recording ? null : onGallery,
         ),
         Semantics(
@@ -2122,6 +2202,8 @@ class _RoundIconButton extends StatelessWidget {
     );
   }
 }
+
+enum _GalleryMediaType { image, video }
 
 @immutable
 class _RecordingTrackingDiagnostics {
