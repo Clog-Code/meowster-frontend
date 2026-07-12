@@ -153,6 +153,16 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     setState(() => _autoReadEnabled = enabled);
   }
 
+  void _startNewChat() {
+    _activeRunToken++;
+    setState(() {
+      _threadId = newAgentId();
+      _messages.clear();
+      _currentAssistant = null;
+      _isSending = false;
+    });
+  }
+
   void _switchThread(String threadId) {
     _activeRunToken++;
     setState(() {
@@ -929,6 +939,11 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
       appBar: AppBar(
         title: const Text('Pet Agent'),
         actions: [
+          IconButton(
+            tooltip: 'New chat',
+            onPressed: _startNewChat,
+            icon: const Icon(Icons.add_circle_outline),
+          ),
           _ChecklistActionButton(
             card: _latestHitlCard(),
             onPressed: _showChecklistSheet,
