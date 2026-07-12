@@ -1547,6 +1547,16 @@ class FakeAgentClient implements AgentStreamClient {
   Future<UploadedMedia> uploadMedia(File file) async {
     return UploadedMedia(url: '', path: file.path);
   }
+
+  @override
+  Future<List<ChatThreadSummary>> fetchThreads({int limit = 50}) async {
+    return [];
+  }
+
+  @override
+  Future<List<ChatMessage>> fetchThreadMessages(String threadId) async {
+    return [];
+  }
 }
 
 class CapturingHttpClient extends http.BaseClient {

@@ -21,6 +21,7 @@ class AgentChatScreen extends StatefulWidget {
   const AgentChatScreen({
     required this.client,
     this.initialCapture,
+    this.initialThreadId,
     this.streakClient = const EmptyPetStreakClient(),
     this.visualLlmClient = const DisabledVisualLlmClient(),
     this.locationService = const GeolocatorLocationService(),
@@ -32,6 +33,7 @@ class AgentChatScreen extends StatefulWidget {
 
   final AgentStreamClient client;
   final PetCaptureResult? initialCapture;
+  final String? initialThreadId;
   final PetStreakClient streakClient;
   final VisualLlmClient visualLlmClient;
   final LocationService locationService;
@@ -47,7 +49,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   final _messages = <ChatMessage>[];
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
-  final _threadId = newAgentId();
+  late String _threadId;
   ChatMessage? _currentAssistant;
   bool _isSending = false;
   bool _isLocating = false;
@@ -85,6 +87,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   @override
   void initState() {
     super.initState();
+    _threadId = widget.initialThreadId ?? newAgentId();
     _speechToTextService =
         widget.speechToTextService ?? NativeSpeechToTextService();
     _ownsTextToSpeechService = widget.textToSpeechService == null;
@@ -94,11 +97,34 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     _autoReadPreferenceStore =
         widget.autoReadPreferenceStore ?? SharedPreferencesAutoReadStore();
     _autoReadReady = _loadAutoReadPreference();
+
+    if (widget.initialThreadId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_loadHistory());
+      });
+    }
+
     final capture = widget.initialCapture;
     if (capture != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _sendPerception(capture);
       });
+    }
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      final history = await widget.client.fetchThreadMessages(_threadId);
+      if (!mounted) return;
+      setState(() {
+        _messages.addAll(history);
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      debugPrint('Failed to load chat history: $error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load conversation history: $error')),
+      );
     }
   }
 
@@ -125,6 +151,17 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     }
     if (!mounted || _isDisposed) return;
     setState(() => _autoReadEnabled = enabled);
+  }
+
+  void _switchThread(String threadId) {
+    _activeRunToken++;
+    setState(() {
+      _threadId = threadId;
+      _messages.clear();
+      _currentAssistant = null;
+      _isSending = false;
+    });
+    unawaited(_loadHistory());
   }
 
   Future<void> _sendPerception(PetCaptureResult capture) async {
@@ -907,7 +944,11 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
           ),
         ],
       ),
-      endDrawer: _ChatMenuDrawer(threadId: _threadId),
+      endDrawer: _ChatMenuDrawer(
+        client: widget.client,
+        currentThreadId: _threadId,
+        onThreadSelected: _switchThread,
+      ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           return Stack(
@@ -2205,10 +2246,44 @@ class _HitlCardState extends State<HitlCard> {
   }
 }
 
-class _ChatMenuDrawer extends StatelessWidget {
-  const _ChatMenuDrawer({required this.threadId});
+class _ChatMenuDrawer extends StatefulWidget {
+  const _ChatMenuDrawer({
+    required this.client,
+    required this.currentThreadId,
+    required this.onThreadSelected,
+  });
 
-  final String threadId;
+  final AgentStreamClient client;
+  final String currentThreadId;
+  final ValueChanged<String> onThreadSelected;
+
+  @override
+  State<_ChatMenuDrawer> createState() => _ChatMenuDrawerState();
+}
+
+class _ChatMenuDrawerState extends State<_ChatMenuDrawer> {
+  List<ChatThreadSummary>? _threads;
+  Object? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadThreads());
+  }
+
+  Future<void> _loadThreads() async {
+    try {
+      final threads = await widget.client.fetchThreads();
+      if (!mounted) return;
+      setState(() {
+        _threads = threads;
+        _loadError = null;
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _loadError = error);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2229,22 +2304,79 @@ class _ChatMenuDrawer extends StatelessWidget {
               leading: const Icon(Icons.chat_bubble_outline),
               title: const Text('Current chat'),
               subtitle: Text(
-                threadId,
+                widget.currentThreadId,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
+              selected: true,
+              onTap: () => Navigator.of(context).pop(),
             ),
             const Divider(),
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Previous chats will appear here after the backend exposes thread history APIs.',
-                style: TextStyle(color: PetTheme.muted, height: 1.35),
-              ),
-            ),
+            if (_loadError != null)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Could not load history.',
+                  style: TextStyle(color: PetTheme.coral, height: 1.35),
+                ),
+              )
+            else if (_threads == null)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else if (_threads!.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'No previous conversations yet.',
+                  style: TextStyle(color: PetTheme.muted, height: 1.35),
+                ),
+              )
+            else
+              for (final thread in _threads!)
+                if (thread.threadId != widget.currentThreadId)
+                  ListTile(
+                    leading: const Icon(Icons.history),
+                    title: Text(
+                      _threadTitle(thread),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      thread.lastMessage ?? '${thread.messageCount} messages',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      widget.onThreadSelected(thread.threadId);
+                    },
+                  ),
           ],
         ),
       ),
     );
+  }
+
+  String _threadTitle(ChatThreadSummary thread) {
+    if (thread.title != null && thread.title!.trim().isNotEmpty) {
+      return thread.title!;
+    }
+    final preview = thread.lastMessage;
+    if (preview != null && preview.trim().isNotEmpty) {
+      return preview.length > 60
+          ? '${preview.substring(0, 57)}...'
+          : preview;
+    }
+    final date = thread.createdAt;
+    if (date.length >= 10) return date.substring(0, 10);
+    return thread.threadId.length > 8
+        ? 'Chat ${thread.threadId.substring(0, 8)}'
+        : thread.threadId;
   }
 }

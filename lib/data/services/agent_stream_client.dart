@@ -177,6 +177,37 @@ class AgentSseParser {
   }
 }
 
+class ChatThreadSummary {
+  ChatThreadSummary({
+    required this.threadId,
+    this.title,
+    required this.createdAt,
+    required this.messageCount,
+    this.lastMessage,
+    this.lastMessageAt,
+  });
+
+  factory ChatThreadSummary.fromJson(Map<String, dynamic> json) {
+    return ChatThreadSummary(
+      threadId: json['thread_id']?.toString() ?? '',
+      title: json['title']?.toString(),
+      createdAt: json['created_at']?.toString() ?? '',
+      messageCount: json['message_count'] is int
+          ? json['message_count'] as int
+          : int.tryParse(json['message_count']?.toString() ?? '0') ?? 0,
+      lastMessage: json['last_message']?.toString(),
+      lastMessageAt: json['last_message_at']?.toString(),
+    );
+  }
+
+  final String threadId;
+  final String? title;
+  final String createdAt;
+  final int messageCount;
+  final String? lastMessage;
+  final String? lastMessageAt;
+}
+
 abstract class AgentStreamClient {
   Future<void> streamAgent({
     required String path,
@@ -188,6 +219,13 @@ abstract class AgentStreamClient {
   /// can be referenced (by server-side path) from a chat/perception message
   /// — this is what lets a subagent's `visual_search` tool pick it up.
   Future<UploadedMedia> uploadMedia(File file);
+
+  /// Fetch recently active conversation threads for a "recent chats" list.
+  Future<List<ChatThreadSummary>> fetchThreads({int limit = 50});
+
+  /// Fetch the full ordered message history for a thread (for restoring a
+  /// conversation after reopening the app or switching threads).
+  Future<List<ChatMessage>> fetchThreadMessages(String threadId);
 }
 
 class AgentApiClient implements AgentStreamClient {
@@ -286,6 +324,68 @@ class AgentApiClient implements AgentStreamClient {
       throw MediaUploadException('Could not connect to $uri: $error');
     } on Object catch (error) {
       throw MediaUploadException('Upload failed at $uri: $error');
+    }
+  }
+
+  @override
+  Future<List<ChatThreadSummary>> fetchThreads({int limit = 50}) async {
+    final uri = baseUri.replace(queryParameters: {'limit': limit.toString()});
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 8);
+    try {
+      final request = await client.getUrl(uri.resolve('/threads'));
+      request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw AgentConnectionException(
+          'Failed to fetch threads (${response.statusCode}): $body',
+        );
+      }
+      final decoded = jsonDecode(body);
+      final list = (decoded is Map ? decoded['threads'] : null) as List?;
+      if (list == null) return [];
+      return list
+          .map((e) => ChatThreadSummary.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on SocketException catch (error) {
+      throw AgentConnectionException('Could not connect to $uri: $error');
+    } finally {
+      client.close();
+    }
+  }
+
+  @override
+  Future<List<ChatMessage>> fetchThreadMessages(String threadId) async {
+    final uri = baseUri.resolve('/threads/$threadId/messages');
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 8);
+    try {
+      final request = await client.getUrl(uri);
+      request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw AgentConnectionException(
+          'Failed to fetch messages (${response.statusCode}): $body',
+        );
+      }
+      final decoded = jsonDecode(body);
+      final list = (decoded is Map ? decoded['messages'] : null) as List?;
+      if (list == null) return [];
+      return list.map((e) {
+        final item = e as Map<String, dynamic>;
+        final roleStr = item['role']?.toString() ?? 'user';
+        return ChatMessage(
+          id: item['message_id']?.toString() ?? '',
+          role: roleStr == 'assistant' ? ChatRole.assistant : ChatRole.user,
+          content: item['content']?.toString() ?? '',
+        );
+      }).toList();
+    } on SocketException catch (error) {
+      throw AgentConnectionException('Could not connect to $uri: $error');
+    } finally {
+      client.close();
     }
   }
 }
