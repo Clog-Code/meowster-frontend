@@ -298,7 +298,7 @@ class _PetRoomScene extends StatelessWidget {
                   message: 'Add a new pet',
                   child: IconButton(
                     onPressed: onAddPet,
-                    icon: const Icon(Icons.add),
+                    icon: const Icon(Icons.add_box_outlined),
                     color: Colors.white,
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.transparent,

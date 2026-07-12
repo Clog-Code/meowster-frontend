@@ -951,12 +951,12 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
           IconButton(
             tooltip: 'New chat',
             onPressed: _startNewChat,
-            icon: const Icon(Icons.add_circle_outline),
+            icon: const Icon(Icons.playlist_add),
           ),
-          _ChecklistActionButton(
-            card: _latestHitlCard(),
-            onPressed: _showChecklistSheet,
-          ),
+          // _ChecklistActionButton(
+          //   card: _latestHitlCard(),
+          //   onPressed: _showChecklistSheet,
+          // ),
           Builder(
             builder: (context) {
               return IconButton(
