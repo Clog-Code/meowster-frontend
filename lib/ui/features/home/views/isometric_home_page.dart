@@ -91,6 +91,7 @@ class _IsometricHomePageState extends State<IsometricHomePage>
   }
 
   Future<void> _showAddPetModal() async {
+    final messenger = ScaffoldMessenger.of(context);
     final result = await showDialog<Object>(
       context: context,
       builder: (_) => _AddPetDialog(client: widget.client!),
@@ -103,11 +104,7 @@ class _IsometricHomePageState extends State<IsometricHomePage>
         await widget.client!.createPetProfile(result);
         _viewModel.resumeStandby();
       } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Failed to add pet: $e')));
-        }
+        messenger.showSnackBar(SnackBar(content: Text('Failed to add pet: $e')));
       }
     }
   }
@@ -994,6 +991,8 @@ class _AddPetDialogState extends State<_AddPetDialog> {
                   ? null
                   : () async {
                       if (!_formKey.currentState!.validate()) return;
+                      final messenger = ScaffoldMessenger.of(context);
+                      final nav = Navigator.of(context);
 
                       if (_photoFile != null) {
                         setState(() => _isUploading = true);
@@ -1004,7 +1003,7 @@ class _AddPetDialogState extends State<_AddPetDialog> {
                           _uploadedImagePath = uploaded.path;
                         } on MediaUploadException {
                           if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          messenger.showSnackBar(
                             const SnackBar(
                               content: Text('Photo upload failed. Try again.'),
                             ),
@@ -1033,10 +1032,9 @@ class _AddPetDialogState extends State<_AddPetDialog> {
                           'preferred_clinic': _clinicCtrl.text,
                         if (_foodBrandCtrl.text.isNotEmpty)
                           'preferred_food_brand': _foodBrandCtrl.text,
-                        if (_uploadedImagePath != null)
-                          'image_path': _uploadedImagePath!,
+                        'image_path': ?_uploadedImagePath,
                       };
-                      if (mounted) Navigator.of(context).pop(data);
+                      if (mounted) nav.pop(data);
                     },
               style: FilledButton.styleFrom(
                 backgroundColor: PetTheme.sage,

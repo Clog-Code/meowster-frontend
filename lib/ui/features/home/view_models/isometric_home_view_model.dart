@@ -152,11 +152,12 @@ class IsometricHomeViewModel extends ChangeNotifier {
     this.actionSelector,
     this.client,
     this.streakClient,
+    List<PetRoomPetState> initialPets = const [],
   }) : _clock = clock,
        _random = random ?? Random(),
        _state = PetRoomState(
          roomAssets: currentRoomAssets(clock: clock),
-         pets: const [],
+         pets: initialPets,
        );
 
   final DeviceClock _clock;

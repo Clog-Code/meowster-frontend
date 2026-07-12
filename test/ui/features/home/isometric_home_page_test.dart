@@ -1,4 +1,5 @@
 import 'package:amd_pet_frontend/data/services/pet_streak_client.dart';
+import 'package:amd_pet_frontend/ui/features/home/models/pet_room_state.dart';
 import 'package:amd_pet_frontend/ui/features/home/view_models/isometric_home_view_model.dart';
 import 'package:amd_pet_frontend/ui/features/home/views/isometric_home_page.dart';
 import 'package:amd_pet_frontend/ui/features/streak/pet_moment_streak_screen.dart';
@@ -18,10 +19,23 @@ Widget _buildTestApp(IsometricHomeViewModel viewModel) {
   );
 }
 
+PetRoomPetState _makePet(String id, String name, {String emotion = 'Sleepy'}) {
+  return PetRoomPetState(
+    id: id,
+    stats: PetStats(name: name, species: 'Cat', emotion: emotion),
+    activeAction: standbyActionById(PetStandbyActionId.sleepAndWake),
+    normalizedPosition: const Offset(0.54, 0.72),
+  );
+}
+
 void main() {
   testWidgets('renders paired room layers and two pets', (tester) async {
     final viewModel = IsometricHomeViewModel(
       clock: () => DateTime(2026, 7, 11, 12),
+      initialPets: [
+        _makePet('mochi', 'Mochi'),
+        _makePet('luna', 'Luna'),
+      ],
     );
     addTearDown(viewModel.dispose);
 
@@ -62,7 +76,12 @@ void main() {
   });
 
   testWidgets('pet tap toggles the glass stat card', (tester) async {
-    final viewModel = IsometricHomeViewModel();
+    final viewModel = IsometricHomeViewModel(
+      initialPets: [
+        _makePet('mochi', 'Mochi'),
+        _makePet('luna', 'Luna'),
+      ],
+    );
     addTearDown(viewModel.dispose);
 
     await tester.pumpWidget(_buildTestApp(viewModel));
@@ -85,7 +104,12 @@ void main() {
   });
 
   testWidgets('each pet opens its own stats', (tester) async {
-    final viewModel = IsometricHomeViewModel();
+    final viewModel = IsometricHomeViewModel(
+      initialPets: [
+        _makePet('mochi', 'Mochi'),
+        _makePet('luna', 'Luna', emotion: 'Curious'),
+      ],
+    );
     addTearDown(viewModel.dispose);
     await tester.pumpWidget(_buildTestApp(viewModel));
 
@@ -102,7 +126,12 @@ void main() {
   });
 
   testWidgets('fixed overlays navigate to streaks and camera', (tester) async {
-    final viewModel = IsometricHomeViewModel();
+    final viewModel = IsometricHomeViewModel(
+      initialPets: [
+        _makePet('mochi', 'Mochi'),
+        _makePet('luna', 'Luna'),
+      ],
+    );
     addTearDown(viewModel.dispose);
     await tester.pumpWidget(_buildTestApp(viewModel));
 

@@ -2,8 +2,32 @@ import 'package:amd_pet_frontend/ui/features/home/models/pet_room_state.dart';
 import 'package:amd_pet_frontend/ui/features/home/view_models/isometric_home_view_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+const primaryPetId = 'mochi';
+const secondaryPetId = 'luna';
+
 PetRoomPetState petState(IsometricHomeViewModel viewModel, String petId) {
   return viewModel.state.pets.firstWhere((pet) => pet.id == petId);
+}
+
+PetRoomPetState _makePet(String id, String name) {
+  return PetRoomPetState(
+    id: id,
+    stats: PetStats(name: name, species: 'Cat', emotion: 'Sleepy'),
+    activeAction: standbyActionById(PetStandbyActionId.sleepAndWake),
+    normalizedPosition: const Offset(0.54, 0.72),
+  );
+}
+
+IsometricHomeViewModel _viewModelWithPets({
+  StandbyActionSelector? actionSelector,
+}) {
+  return IsometricHomeViewModel(
+    actionSelector: actionSelector,
+    initialPets: [
+      _makePet(primaryPetId, 'Mochi'),
+      _makePet(secondaryPetId, 'Luna'),
+    ],
+  );
 }
 
 void main() {
@@ -97,7 +121,7 @@ void main() {
     });
 
     test('walk and sit forces a sitting follow-up', () {
-      final viewModel = IsometricHomeViewModel(
+      final viewModel = _viewModelWithPets(
         actionSelector: (candidates) => candidates.firstWhere(
           (action) => action.id == PetStandbyActionId.walkingFrontAndSit,
         ),
@@ -118,7 +142,7 @@ void main() {
     });
 
     test('walk and lay forces a sleeping follow-up', () {
-      final viewModel = IsometricHomeViewModel(
+      final viewModel = _viewModelWithPets(
         actionSelector: (candidates) => candidates.firstWhere(
           (action) => action.id == PetStandbyActionId.walkingRightAndLay,
         ),
@@ -139,7 +163,7 @@ void main() {
     });
 
     test('secondary pet advances without changing the primary pet', () {
-      final viewModel = IsometricHomeViewModel(
+      final viewModel = _viewModelWithPets(
         actionSelector: (candidates) => candidates.firstWhere(
           (action) => action.id == PetStandbyActionId.walkingLeft,
         ),
@@ -157,7 +181,7 @@ void main() {
     });
 
     test('pet selection toggles without stopping standby', () {
-      final viewModel = IsometricHomeViewModel();
+      final viewModel = _viewModelWithPets();
       addTearDown(viewModel.dispose);
       viewModel.startStandby();
 
