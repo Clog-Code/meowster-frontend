@@ -21,6 +21,7 @@ import '../chat/agent_chat_screen.dart';
 import '../streak/pet_moment_streak_screen.dart';
 import 'view_models/capture_view_model.dart';
 import 'views/replay_tracking_viewport.dart';
+import '../../../data/services/local_moment_storage.dart';
 
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({
