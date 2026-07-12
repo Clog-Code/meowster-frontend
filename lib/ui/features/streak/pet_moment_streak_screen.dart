@@ -105,7 +105,10 @@ class _PetMomentStreakScreenState extends State<PetMomentStreakScreen> {
             }
 
             if (snapshot.hasError) {
-              return _StreakErrorState(onRetry: _retry, petName: widget.petName);
+              return _StreakErrorState(
+                onRetry: _retry,
+                petName: widget.petName,
+              );
             }
 
             final summary = snapshot.data ?? PetStreakSummary.empty();
@@ -206,8 +209,6 @@ class _StreakContentState extends State<_StreakContent> {
     );
   }
 }
-
-
 
 class _HeroStreak extends StatelessWidget {
   const _HeroStreak({required this.summary, required this.petName});
@@ -952,7 +953,10 @@ class _MomentPreviewCard extends StatelessWidget {
                 builder: (context, snapshot) {
                   final records = snapshot.data ?? const [];
                   if (records.isEmpty) {
-                    return Text(marker, style: const TextStyle(fontSize: 24, height: 1));
+                    return Text(
+                      marker,
+                      style: const TextStyle(fontSize: 24, height: 1),
+                    );
                   }
 
                   final latest = records.first;
@@ -962,7 +966,11 @@ class _MomentPreviewCard extends StatelessWidget {
                       alignment: Alignment.center,
                       children: [
                         _VideoFramePreview(videoPath: latest.filePath),
-                        const Icon(Icons.play_circle_fill, color: Colors.white, size: 26),
+                        const Icon(
+                          Icons.play_circle_fill,
+                          color: Colors.white,
+                          size: 26,
+                        ),
                       ],
                     );
                   } else {
@@ -1071,8 +1079,9 @@ class _MomentPreviewSheetState extends State<_MomentPreviewSheet> {
   }
 
   Future<void> _load() async {
-    final records =
-        await LocalMomentStorage.instance.momentsForDate(widget.day.date);
+    final records = await LocalMomentStorage.instance.momentsForDate(
+      widget.day.date,
+    );
     if (!mounted) return;
     setState(() {
       _records = records;
@@ -1141,6 +1150,10 @@ class _MomentPreviewSheetState extends State<_MomentPreviewSheet> {
     final day = widget.day;
     final marker = catMomentMarker(day);
     final healthLabel = day.isHealthy ? 'Healthy moment' : 'Needs attention';
+    final rawMood = day.dominantEmotion ?? 'Unknown';
+    final capitalizedMood = rawMood.isNotEmpty
+        ? '${rawMood[0].toUpperCase()}${rawMood.substring(1)}'
+        : 'Unknown';
 
     return SafeArea(
       child: Padding(
@@ -1201,8 +1214,9 @@ class _MomentPreviewSheetState extends State<_MomentPreviewSheet> {
                       return Container(
                         color: PetTheme.panelSoft,
                         child: const Center(
-                          child:
-                              CircularProgressIndicator(color: PetTheme.aqua),
+                          child: CircularProgressIndicator(
+                            color: PetTheme.aqua,
+                          ),
                         ),
                       );
                     },
@@ -1299,7 +1313,7 @@ class _MomentPreviewSheetState extends State<_MomentPreviewSheet> {
             _PreviewFact(
               icon: Icons.psychology_alt_outlined,
               label: 'Mood',
-              value: day.dominantEmotion ?? 'Unknown',
+              value: capitalizedMood,
             ),
             const SizedBox(height: 10),
             _PreviewFact(
