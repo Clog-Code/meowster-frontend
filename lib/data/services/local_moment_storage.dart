@@ -113,15 +113,25 @@ class LocalMomentStorage {
   /// Returns the most recent local moment captured on [date] (matching
   /// year/month/day only), or null if nothing was captured that day.
   Future<LocalMomentRecord?> momentForDate(DateTime date) async {
-    final records = await _readIndex();
-    final matches = records.where(
-      (record) =>
-          record.date.year == date.year &&
-          record.date.month == date.month &&
-          record.date.day == date.day,
-    );
+    final matches = await momentsForDate(date);
     if (matches.isEmpty) return null;
-    return matches.reduce((a, b) => a.date.isAfter(b.date) ? a : b);
+    return matches.first;
+  }
+
+  /// Returns ALL local moments captured on [date] (matching year/month/day
+  /// only), most recent first. Use this when a day may have multiple snaps.
+  Future<List<LocalMomentRecord>> momentsForDate(DateTime date) async {
+    final records = await _readIndex();
+    final matches = records
+        .where(
+          (record) =>
+              record.date.year == date.year &&
+              record.date.month == date.month &&
+              record.date.day == date.day,
+        )
+        .toList();
+    matches.sort((a, b) => b.date.compareTo(a.date));
+    return matches;
   }
 
   /// Returns all locally saved moments, most recent first.
