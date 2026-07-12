@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -18,6 +19,9 @@ class ChatComposer extends StatelessWidget {
     required this.onCancelListening,
     required this.onSend,
     required this.onStop,
+    this.pendingImagePath,
+    this.isUploadingImage = false,
+    this.onRemoveAttachment,
     super.key,
   });
 
@@ -33,6 +37,19 @@ class ChatComposer extends StatelessWidget {
   final VoidCallback onCancelListening;
   final VoidCallback onSend;
   final VoidCallback onStop;
+
+  /// Local (on-device) file path of a photo the user has attached to the
+  /// next chat message. Shown as a small thumbnail above the text field.
+  /// This is the lightweight "attach a photo + type a message" flow — it
+  /// never opens the full camera/ML capture screen.
+  final String? pendingImagePath;
+
+  /// True while the attached photo is being uploaded to the backend so its
+  /// server-side path can be threaded into the chat message.
+  final bool isUploadingImage;
+
+  /// Called when the user taps the "x" on the attachment thumbnail.
+  final VoidCallback? onRemoveAttachment;
 
   @override
   Widget build(BuildContext context) {
@@ -74,6 +91,9 @@ class ChatComposer extends StatelessWidget {
                         onGallery: onGallery,
                         onSend: onSend,
                         onStop: onStop,
+                        pendingImagePath: pendingImagePath,
+                        isUploadingImage: isUploadingImage,
+                        onRemoveAttachment: onRemoveAttachment,
                       ),
               ),
             ),
@@ -293,6 +313,9 @@ class _TypingComposer extends StatelessWidget {
     required this.onGallery,
     required this.onSend,
     required this.onStop,
+    this.pendingImagePath,
+    this.isUploadingImage = false,
+    this.onRemoveAttachment,
     super.key,
   });
 
@@ -302,55 +325,149 @@ class _TypingComposer extends StatelessWidget {
   final VoidCallback onGallery;
   final VoidCallback onSend;
   final VoidCallback onStop;
+  final String? pendingImagePath;
+  final bool isUploadingImage;
+  final VoidCallback? onRemoveAttachment;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (pendingImagePath != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _AttachmentPreview(
+              imagePath: pendingImagePath!,
+              isUploading: isUploadingImage,
+              onRemove: onRemoveAttachment,
+            ),
+          ),
+        Container(
+          constraints: const BoxConstraints(minHeight: 54),
+          decoration: BoxDecoration(
+            color: PetTheme.panel,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF303A46)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              IconButton(
+                tooltip: 'Attach a photo',
+                visualDensity: compact ? VisualDensity.compact : null,
+                onPressed: isSending ? null : onGallery,
+                icon: const Icon(Icons.photo_library_outlined),
+              ),
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('chat-text-field'),
+                  controller: controller,
+                  minLines: 1,
+                  maxLines: 6,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  decoration: const InputDecoration(
+                    hintText: 'Ask about your pet',
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    filled: false,
+                    contentPadding: EdgeInsets.symmetric(vertical: 15),
+                  ),
+                ),
+              ),
+              IconButton.filled(
+                tooltip: isSending ? 'Stop response' : 'Send',
+                visualDensity: compact ? VisualDensity.compact : null,
+                onPressed: isSending
+                    ? onStop
+                    : () {
+                        FocusManager.instance.primaryFocus?.unfocus();
+                        onSend();
+                      },
+                icon: Icon(isSending ? Icons.stop : Icons.arrow_upward),
+              ),
+              const SizedBox(width: 5),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Small thumbnail chip shown above the text field once the user has
+/// attached a photo from the gallery. Purely a preview — the actual
+/// upload happens as soon as the photo is picked (see
+/// AgentChatScreen._pickAttachment), so by the time the message is sent
+/// the server-side path is already known.
+class _AttachmentPreview extends StatelessWidget {
+  const _AttachmentPreview({
+    required this.imagePath,
+    required this.isUploading,
+    this.onRemove,
+  });
+
+  final String imagePath;
+  final bool isUploading;
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minHeight: 54),
+      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: PetTheme.panel,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFF303A46)),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            tooltip: 'Choose media from gallery',
-            visualDensity: compact ? VisualDensity.compact : null,
-            onPressed: isSending ? null : onGallery,
-            icon: const Icon(Icons.photo_library_outlined),
-          ),
-          Expanded(
-            child: TextField(
-              key: const ValueKey('chat-text-field'),
-              controller: controller,
-              minLines: 1,
-              maxLines: 6,
-              keyboardType: TextInputType.multiline,
-              textInputAction: TextInputAction.newline,
-              decoration: const InputDecoration(
-                hintText: 'Ask about your pet',
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                filled: false,
-                contentPadding: EdgeInsets.symmetric(vertical: 15),
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.file(
+                  File(imagePath),
+                  width: 48,
+                  height: 48,
+                  fit: BoxFit.cover,
+                ),
               ),
+              if (isUploading)
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Center(
+                    child: SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 8),
+          Text(
+            isUploading ? 'Attaching photo…' : 'Photo attached',
+            style: TextStyle(color: PetTheme.muted, fontSize: 13),
+          ),
+          if (onRemove != null)
+            IconButton(
+              tooltip: 'Remove photo',
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              onPressed: onRemove,
+              icon: const Icon(Icons.close),
             ),
-          ),
-          IconButton.filled(
-            tooltip: isSending ? 'Stop response' : 'Send',
-            visualDensity: compact ? VisualDensity.compact : null,
-            onPressed: isSending
-                ? onStop
-                : () {
-                    FocusManager.instance.primaryFocus?.unfocus();
-                    onSend();
-                  },
-            icon: Icon(isSending ? Icons.stop : Icons.arrow_upward),
-          ),
-          const SizedBox(width: 5),
         ],
       ),
     );

@@ -88,6 +88,7 @@ class ChatMessage {
     this.agentContext,
     this.attachmentLabel,
     this.capture,
+    this.localImagePath,
     List<ToolDecoration>? tools,
     this.hitlCard,
     this.isStreaming = false,
@@ -100,6 +101,15 @@ class ChatMessage {
   String? agentContext;
   String? attachmentLabel;
   PetCaptureResult? capture;
+
+  /// On-device path of a photo attached via the lightweight chat-page
+  /// "attach a photo + type a message" flow (as opposed to [capture],
+  /// which carries a full on-device ML perception result from the
+  /// snapchat-style camera screen). Only used to render a thumbnail in
+  /// the user's own chat bubble — the server-side path this refers to is
+  /// threaded into [agentContext] instead, for the agent's `visual_search`
+  /// tool to pick up.
+  String? localImagePath;
   final List<ToolDecoration> tools;
   HitlCardData? hitlCard;
   bool isStreaming;
