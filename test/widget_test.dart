@@ -1557,6 +1557,11 @@ class FakeAgentClient implements AgentStreamClient {
   Future<List<ChatMessage>> fetchThreadMessages(String threadId) async {
     return [];
   }
+
+  @override
+  Future<Map<String, dynamic>?> fetchPetProfile(String petId) async {
+    return null;
+  }
 }
 
 class CapturingHttpClient extends http.BaseClient {

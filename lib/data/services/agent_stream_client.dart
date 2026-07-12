@@ -226,6 +226,9 @@ abstract class AgentStreamClient {
   /// Fetch the full ordered message history for a thread (for restoring a
   /// conversation after reopening the app or switching threads).
   Future<List<ChatMessage>> fetchThreadMessages(String threadId);
+
+  /// Fetch a pet's profile from the backend.
+  Future<Map<String, dynamic>?> fetchPetProfile(String petId);
 }
 
 class AgentApiClient implements AgentStreamClient {
@@ -348,6 +351,34 @@ class AgentApiClient implements AgentStreamClient {
       return list
           .map((e) => ChatThreadSummary.fromJson(e as Map<String, dynamic>))
           .toList();
+    } on SocketException catch (error) {
+      throw AgentConnectionException('Could not connect to $uri: $error');
+    } finally {
+      client.close();
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>?> fetchPetProfile(String petId) async {
+    final uri = baseUri.resolve('/pet-profile/$petId');
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 8);
+    try {
+      final request = await client.getUrl(uri);
+      request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode == 404) return null;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw AgentConnectionException(
+          'Failed to fetch pet profile (${response.statusCode}): $body',
+        );
+      }
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic> && decoded['profile'] is Map) {
+        return decoded['profile'] as Map<String, dynamic>;
+      }
+      return null;
     } on SocketException catch (error) {
       throw AgentConnectionException('Could not connect to $uri: $error');
     } finally {

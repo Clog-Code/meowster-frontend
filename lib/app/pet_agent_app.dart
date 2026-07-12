@@ -38,6 +38,7 @@ class PetAgentApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: PetTheme.dark(),
       home: IsometricHomePage(
+        client: client,
         captureScreenBuilder: (context) => CaptureScreen(
           client: client,
           streakClient: streakClient,

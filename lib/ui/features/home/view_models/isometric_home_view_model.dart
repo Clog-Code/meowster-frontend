@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../../data/services/agent_stream_client.dart';
 import '../models/pet_room_state.dart';
 
 typedef DeviceClock = DateTime Function();
@@ -116,12 +117,26 @@ const PetStats defaultPrimaryPetStats = PetStats(
   name: 'Mochi',
   species: 'Cat',
   emotion: 'Sleepy',
+  breed: 'Domestic Shorthair',
+  weightKg: 4.2,
+  lifeStage: 'Adult',
+  knownConditions: 'None',
+  deliveryAddress: '123 Pet Street, NY 10001',
+  preferredClinic: 'Happy Paws Vet Clinic',
+  preferredFoodBrand: 'Whiskas',
 );
 
 const PetStats defaultSecondaryPetStats = PetStats(
   name: 'Luna',
   species: 'Cat',
   emotion: 'Curious',
+  breed: 'Persian',
+  weightKg: 3.8,
+  lifeStage: 'Kitten',
+  knownConditions: 'None',
+  deliveryAddress: '123 Pet Street, NY 10001',
+  preferredClinic: 'Happy Paws Vet Clinic',
+  preferredFoodBrand: 'Royal Canin',
 );
 
 const double petFloorMinX = 0.32;
@@ -159,6 +174,7 @@ class IsometricHomeViewModel extends ChangeNotifier {
     DeviceClock clock = DateTime.now,
     Random? random,
     this.actionSelector,
+    this.client,
   }) : _clock = clock,
        _random = random ?? Random(),
        _state = PetRoomState(
@@ -184,10 +200,43 @@ class IsometricHomeViewModel extends ChangeNotifier {
   final DeviceClock _clock;
   final Random _random;
   final StandbyActionSelector? actionSelector;
+  final AgentStreamClient? client;
   final Map<String, Timer> _standbyTimers = {};
   final Map<String, PetStandbyActionId> _forcedNextActions = {};
   bool _isStandbyRunning = false;
   PetRoomState _state;
+
+  Future<void> loadPetProfile(String petId) async {
+    final c = client;
+    if (c == null) return;
+    try {
+      final profile = await c.fetchPetProfile(petId);
+      if (profile == null) return;
+      final petIndex = _state.pets.indexWhere((pet) => pet.id == petId);
+      if (petIndex == -1) return;
+
+      final pet = _state.pets[petIndex];
+      final stats = pet.stats.copyWith(
+        name: profile['name']?.toString() ?? pet.stats.name,
+        species: profile['species']?.toString() ?? pet.stats.species,
+        breed: profile['breed']?.toString(),
+        weightKg: profile['weight_kg'] != null
+            ? (profile['weight_kg'] as num).toDouble()
+            : null,
+        lifeStage: profile['life_stage']?.toString(),
+        knownConditions: profile['known_conditions']?.toString(),
+        deliveryAddress: profile['delivery_address']?.toString(),
+        preferredClinic: profile['preferred_clinic']?.toString(),
+        preferredFoodBrand: profile['preferred_food_brand']?.toString(),
+      );
+      final pets = List<PetRoomPetState>.of(_state.pets);
+      pets[petIndex] = pet.copyWith(stats: stats);
+      _state = _state.copyWith(pets: List.unmodifiable(pets));
+      notifyListeners();
+    } on AgentConnectionException {
+      // Backend unavailable — keep using default stats.
+    }
+  }
 
   PetRoomState get state => _state;
   bool get isStandbyRunning => _isStandbyRunning;
@@ -227,6 +276,7 @@ class IsometricHomeViewModel extends ChangeNotifier {
     _isStandbyRunning = true;
     for (final pet in _state.pets) {
       _scheduleNextAction(pet.id);
+      loadPetProfile(pet.id);
     }
     triggerWelcome();
   }

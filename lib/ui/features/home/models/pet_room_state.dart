@@ -30,11 +30,51 @@ class PetStats {
     required this.name,
     required this.species,
     required this.emotion,
+    this.breed,
+    this.weightKg,
+    this.lifeStage,
+    this.knownConditions,
+    this.deliveryAddress,
+    this.preferredClinic,
+    this.preferredFoodBrand,
   });
 
   final String name;
   final String species;
   final String emotion;
+  final String? breed;
+  final double? weightKg;
+  final String? lifeStage;
+  final String? knownConditions;
+  final String? deliveryAddress;
+  final String? preferredClinic;
+  final String? preferredFoodBrand;
+
+  PetStats copyWith({
+    String? name,
+    String? species,
+    String? emotion,
+    String? breed,
+    double? weightKg,
+    String? lifeStage,
+    String? knownConditions,
+    String? deliveryAddress,
+    String? preferredClinic,
+    String? preferredFoodBrand,
+  }) {
+    return PetStats(
+      name: name ?? this.name,
+      species: species ?? this.species,
+      emotion: emotion ?? this.emotion,
+      breed: breed ?? this.breed,
+      weightKg: weightKg ?? this.weightKg,
+      lifeStage: lifeStage ?? this.lifeStage,
+      knownConditions: knownConditions ?? this.knownConditions,
+      deliveryAddress: deliveryAddress ?? this.deliveryAddress,
+      preferredClinic: preferredClinic ?? this.preferredClinic,
+      preferredFoodBrand: preferredFoodBrand ?? this.preferredFoodBrand,
+    );
+  }
 }
 
 @immutable

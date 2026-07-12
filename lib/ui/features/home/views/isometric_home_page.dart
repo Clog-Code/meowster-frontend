@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../../core/pet_theme.dart';
+import '../../../../data/services/agent_stream_client.dart';
 import '../models/pet_room_state.dart';
 import '../view_models/isometric_home_view_model.dart';
 
@@ -15,6 +16,7 @@ class IsometricHomePage extends StatefulWidget {
     required this.streakScreenBuilder,
     required this.chatScreenBuilder,
     this.viewModel,
+    this.client,
     super.key,
   });
 
@@ -22,6 +24,7 @@ class IsometricHomePage extends StatefulWidget {
   final WidgetBuilder streakScreenBuilder;
   final WidgetBuilder chatScreenBuilder;
   final IsometricHomeViewModel? viewModel;
+  final AgentStreamClient? client;
 
   @override
   State<IsometricHomePage> createState() => _IsometricHomePageState();
@@ -36,7 +39,8 @@ class _IsometricHomePageState extends State<IsometricHomePage>
   void initState() {
     super.initState();
     _ownsViewModel = widget.viewModel == null;
-    _viewModel = widget.viewModel ?? IsometricHomeViewModel();
+    _viewModel = widget.viewModel ??
+        IsometricHomeViewModel(client: widget.client);
     WidgetsBinding.instance.addObserver(this);
     _viewModel.startStandby();
   }
@@ -356,7 +360,7 @@ class _PositionedPetStatCard extends StatelessWidget {
   }
 }
 
-class _PetStatCard extends StatelessWidget {
+class _PetStatCard extends StatefulWidget {
   const _PetStatCard({
     required this.stats,
     required this.onOpenCamera,
@@ -368,8 +372,17 @@ class _PetStatCard extends StatelessWidget {
   final bool isWelcomeMode;
 
   @override
+  State<_PetStatCard> createState() => _PetStatCardState();
+}
+
+class _PetStatCardState extends State<_PetStatCard> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
-    final title = isWelcomeMode ? 'Meow...Meow Meow...Moew Meow' : 'Pet Stats';
+    final title = widget.isWelcomeMode
+        ? 'Meow...Meow Meow...Moew Meow'
+        : 'Pet Stats';
 
     return ClipRRect(
       key: const Key('pet-stat-card'),
@@ -402,7 +415,7 @@ class _PetStatCard extends StatelessWidget {
                     ),
                     IconButton(
                       tooltip: 'Open camera',
-                      onPressed: onOpenCamera,
+                      onPressed: widget.onOpenCamera,
                       style: IconButton.styleFrom(
                         backgroundColor: const Color(0x33FFFFFF),
                         foregroundColor: PetTheme.ivory,
@@ -413,17 +426,75 @@ class _PetStatCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                _StatRow(label: 'Pet Name', value: stats.name),
+                _StatRow(label: 'Name', value: widget.stats.name),
                 const SizedBox(height: 8),
-                _StatRow(label: 'Species', value: stats.species),
+                _StatRow(label: 'Species', value: widget.stats.species),
                 const SizedBox(height: 8),
-                _StatRow(label: 'Emotion', value: stats.emotion),
+                _StatRow(label: 'Emotion', value: widget.stats.emotion),
+                if (_extraStats.isNotEmpty) ...[
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Divider(color: Color(0x44FFFFFF)),
+                  ),
+                  GestureDetector(
+                    onTap: () => setState(() => _expanded = !_expanded),
+                    child: Row(
+                      children: [
+                        const Spacer(),
+                        Text(
+                          _expanded ? 'Show less' : 'Show more',
+                          style: const TextStyle(
+                            color: PetTheme.muted,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          _expanded
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                          color: PetTheme.muted,
+                          size: 20,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_expanded) ..._extraStats,
+                ],
               ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  List<Widget> get _extraStats {
+    final s = widget.stats;
+    final widgets = <Widget>[];
+    void addRow(String label, String value) {
+      widgets.add(const SizedBox(height: 8));
+      widgets.add(_StatRow(label: label, value: value));
+    }
+
+    if (s.breed != null) addRow('Breed', s.breed!);
+    if (s.weightKg != null) {
+      addRow('Weight', '${s.weightKg!.toStringAsFixed(1)} kg');
+    }
+    if (s.lifeStage != null) addRow('Life Stage', s.lifeStage!);
+    if (s.knownConditions != null && s.knownConditions!.isNotEmpty) {
+      addRow('Conditions', s.knownConditions!);
+    }
+    if (s.preferredClinic != null && s.preferredClinic!.isNotEmpty) {
+      addRow('Preferred Clinic', s.preferredClinic!);
+    }
+    if (s.preferredFoodBrand != null && s.preferredFoodBrand!.isNotEmpty) {
+      addRow('Food Brand', s.preferredFoodBrand!);
+    }
+    if (s.deliveryAddress != null && s.deliveryAddress!.isNotEmpty) {
+      addRow('Delivery Address', s.deliveryAddress!);
+    }
+    return widgets;
   }
 }
 
@@ -436,15 +507,16 @@ class _StatRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
+        SizedBox(
+          width: 120,
           child: Text(label, style: const TextStyle(color: PetTheme.muted)),
         ),
-        const SizedBox(width: 16),
-        Flexible(
+        const SizedBox(width: 8),
+        Expanded(
           child: Text(
             value,
-            textAlign: TextAlign.end,
             style: const TextStyle(
               color: PetTheme.ivory,
               fontWeight: FontWeight.w700,
