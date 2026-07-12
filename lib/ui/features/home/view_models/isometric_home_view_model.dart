@@ -193,16 +193,18 @@ class IsometricHomeViewModel extends ChangeNotifier {
         final position = i < _petPositions.length
             ? _petPositions[i]
             : Offset(0.54, 0.72);
-        petStates.add(PetRoomPetState(
-          id: petId,
-          stats: PetStats(
-            name: p['name']?.toString() ?? 'Pet ${i + 1}',
-            species: p['species']?.toString() ?? '',
-            mood: 'Sleepy',
+        petStates.add(
+          PetRoomPetState(
+            id: petId,
+            stats: PetStats(
+              name: p['name']?.toString() ?? 'Pet ${i + 1}',
+              species: p['species']?.toString() ?? '',
+              mood: 'Sleepy',
+            ),
+            activeAction: standbyActionById(PetStandbyActionId.sleepAndWake),
+            normalizedPosition: position,
           ),
-          activeAction: standbyActionById(PetStandbyActionId.sleepAndWake),
-          normalizedPosition: position,
-        ));
+        );
       }
 
       if (petStates.isEmpty) return;
@@ -343,7 +345,7 @@ class IsometricHomeViewModel extends ChangeNotifier {
     _welcomeTimer?.cancel();
     _isWelcomeMode = true;
     notifyListeners();
-    
+
     _welcomeTimer = Timer(const Duration(seconds: 4), () {
       _isWelcomeMode = false;
       _welcomeTimer = null;
@@ -356,6 +358,7 @@ class IsometricHomeViewModel extends ChangeNotifier {
     _isStandbyRunning = true;
     if (!_petsLoaded) {
       loadPets().then((_) {
+        if (!_isStandbyRunning) return;
         for (final pet in _state.pets) {
           _scheduleNextAction(pet.id);
         }
@@ -381,9 +384,8 @@ class IsometricHomeViewModel extends ChangeNotifier {
 
   void resumeStandby() {
     refreshBackground();
-    _isStandbyRunning = false;
+    pauseStandby();
     _petsLoaded = false;
-    _standbyTimers.clear();
     _forcedNextActions.clear();
     startStandby();
   }
