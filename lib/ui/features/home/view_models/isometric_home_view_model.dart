@@ -164,7 +164,7 @@ class IsometricHomeViewModel extends ChangeNotifier {
   final StandbyActionSelector? actionSelector;
   final AgentStreamClient? client;
   final PetStreakClient? streakClient;
-  int currentStreak = 0;
+  int? currentStreak;
   final Map<String, Timer> _standbyTimers = {};
   final Map<String, PetStandbyActionId> _forcedNextActions = {};
   bool _isStandbyRunning = false;
@@ -264,6 +264,12 @@ class IsometricHomeViewModel extends ChangeNotifier {
 
   PetRoomState get state => _state;
   bool get isStandbyRunning => _isStandbyRunning;
+
+  void clearSelection() {
+    _state = _state.copyWith(clearSelectedPet: true);
+    currentStreak = null;
+    notifyListeners();
+  }
 
   void togglePetStats(String petId) {
     if (!_state.pets.any((pet) => pet.id == petId)) return;

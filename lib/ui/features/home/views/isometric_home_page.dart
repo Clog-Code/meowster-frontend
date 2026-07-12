@@ -126,6 +126,7 @@ class _IsometricHomePageState extends State<IsometricHomePage>
                 state: _viewModel.state,
                 constraints: constraints,
                 onPetTap: _viewModel.togglePetStats,
+                onTapBlank: _viewModel.clearSelection,
                 onOpenCamera: () =>
                     _openDestination(widget.captureScreenBuilder),
                 onOpenStreaks: _openStreakScreen,
@@ -147,6 +148,7 @@ class _PetRoomScene extends StatelessWidget {
     required this.state,
     required this.constraints,
     required this.onPetTap,
+    required this.onTapBlank,
     required this.onOpenCamera,
     required this.onOpenStreaks,
     required this.onOpenChat,
@@ -157,11 +159,12 @@ class _PetRoomScene extends StatelessWidget {
   final PetRoomState state;
   final BoxConstraints constraints;
   final ValueChanged<String> onPetTap;
+  final VoidCallback onTapBlank;
   final VoidCallback onOpenCamera;
   final VoidCallback onOpenStreaks;
   final VoidCallback onOpenChat;
   final VoidCallback onAddPet;
-  final int streakCount;
+  final int? streakCount;
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +211,11 @@ class _PetRoomScene extends StatelessWidget {
                   scale: 0.85,
                   child: SizedBox.square(
                     dimension: sceneExtent,
-                    child: _ZoomableRoom(state: state, onPetTap: onPetTap),
+                    child: _ZoomableRoom(
+                      state: state,
+                      onPetTap: onPetTap,
+                      onTapBlank: onTapBlank,
+                    ),
                   ),
                 ),
               ),
@@ -230,13 +237,15 @@ class _PetRoomScene extends StatelessWidget {
               ),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: _GlassCommandButton(
-                  tooltip: 'Open pet moment streak calendar',
-                  icon: Icons.local_fire_department_rounded,
-                  label: '$streakCount Streak${streakCount >= 1 ? "s" : ""}',
-                  onPressed: onOpenStreaks,
-                  iconColor: streakCount > 0 ? PetTheme.coral : PetTheme.muted,
-                ),
+                child: streakCount != null
+                    ? _GlassCommandButton(
+                        tooltip: 'Open pet moment streak calendar',
+                        icon: Icons.local_fire_department_rounded,
+                        label: '$streakCount Streak${streakCount! >=1 ? 's' : ''}',
+                        onPressed: onOpenStreaks,
+                        iconColor: streakCount! > 0 ? PetTheme.coral : PetTheme.muted,
+                      )
+                    : const SizedBox.shrink(),
               ),
             ),
           ),
@@ -290,10 +299,15 @@ class _PetRoomScene extends StatelessWidget {
 }
 
 class _ZoomableRoom extends StatelessWidget {
-  const _ZoomableRoom({required this.state, required this.onPetTap});
+  const _ZoomableRoom({
+    required this.state,
+    required this.onPetTap,
+    required this.onTapBlank,
+  });
 
   final PetRoomState state;
   final ValueChanged<String> onPetTap;
+  final VoidCallback onTapBlank;
 
   @override
   Widget build(BuildContext context) {
@@ -321,11 +335,14 @@ class _ZoomableRoom extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             Positioned.fill(
-              child: Image.asset(
-                state.roomAssets.transparentRoomAssetPath,
-                key: const Key('isometric-transparent-room'),
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.high,
+              child: GestureDetector(
+                onTap: onTapBlank,
+                child: Image.asset(
+                  state.roomAssets.transparentRoomAssetPath,
+                  key: const Key('isometric-transparent-room'),
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
               ),
             ),
             for (final pet in state.pets)
