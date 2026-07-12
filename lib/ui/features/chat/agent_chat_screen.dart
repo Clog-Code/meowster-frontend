@@ -60,7 +60,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   late final Future<void> _autoReadReady;
   late final bool _ownsTextToSpeechService;
   bool _isListening = false;
-  bool _isPushToTalkHeld = false;
+  bool _isDictationHeld = false;
   bool _isDisposed = false;
   bool _autoReadEnabled = true;
   double _soundLevel = 0;
@@ -589,16 +589,16 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   }
 
   void _beginPushToTalk() {
-    if (_isSending || _isPushToTalkHeld) return;
+    if (_isSending || _isDictationHeld) return;
     FocusManager.instance.primaryFocus?.unfocus();
-    _isPushToTalkHeld = true;
+    _isDictationHeld = true;
     unawaited(_startDictation());
   }
 
   Future<void> _startDictation() async {
     await _stopSpeechPlayback();
     await Future<void>.delayed(const Duration(milliseconds: 120));
-    if (!_isPushToTalkHeld || _isSending || !mounted) return;
+    if (!_isDictationHeld || _isSending || !mounted) return;
     _dictationBaseText = _inputController.text.trimRight();
     setState(() {
       _isListening = true;
@@ -620,34 +620,61 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
         },
         onError: (error) {
           if (!mounted || _isDisposed) return;
-          _isPushToTalkHeld = false;
+          _isDictationHeld = false;
           _setListening(false);
           _showSpeechError(error);
         },
       );
     } on Object catch (error) {
       if (!mounted || _isDisposed) return;
-      _isPushToTalkHeld = false;
+      _isDictationHeld = false;
       _setListening(false);
       _showSpeechError(error);
     }
   }
 
+  /// Ends dictation and sends whatever transcript was captured. Used both
+  /// by releasing the hold-to-talk button and by tapping "confirm" in
+  /// tap-to-confirm mode.
   void _endPushToTalk() {
-    if (!_isPushToTalkHeld && !_isListening) return;
-    _isPushToTalkHeld = false;
+    if (!_isDictationHeld && !_isListening) return;
+    _isDictationHeld = false;
     unawaited(_stopDictation());
   }
 
+  /// Ends dictation and discards the transcript instead of sending it.
+  /// Used by the "cancel" button in tap-to-confirm mode.
+  void _cancelDictation() {
+    if (!_isDictationHeld && !_isListening) return;
+    _isDictationHeld = false;
+    unawaited(_discardDictation());
+  }
+
   Future<void> _stopDictation() async {
+    var stoppedCleanly = false;
     try {
       await _speechToTextService.stop();
+      stoppedCleanly = true;
     } on Object catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_friendlySpeechError(error))));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_friendlySpeechError(error))));
+      }
     } finally {
+      _setListening(false);
+    }
+  }
+
+  Future<void> _discardDictation() async {
+    try {
+      await _speechToTextService.cancel();
+    } on Object catch (_) {
+      // Best-effort discard — nothing actionable to show the user here.
+    } finally {
+      if (mounted && !_isDisposed) {
+        _setInputText(_dictationBaseText);
+      }
       _setListening(false);
     }
   }
@@ -816,58 +843,90 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
       endDrawer: _ChatMenuDrawer(threadId: _threadId),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          return Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: constraints.maxWidth > 700 ? 680 : double.infinity,
-              ),
-              child: Column(
-                children: [
-                  Expanded(
-                    child: _messages.isEmpty
-                        ? const _EmptyChatState()
-                        : ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                            itemCount: _messages.length,
-                            itemBuilder: (context, index) {
-                              return ChatMessageView(
-                                message: _messages[index],
-                                showLocationPrompt: _shouldAskForLocation(
-                                  _messages[index],
-                                ),
-                                isLocating: _isLocating,
-                                autoReadEnabled: _autoReadEnabled,
-                                isSpeaking:
-                                    _speakingMessageId == _messages[index].id,
-                                onShareLocation: _shareCurrentLocation,
-                                onBookRecommendation: _sendChat,
-                                onToggleAutoRead: _toggleAutoRead,
-                              );
-                            },
-                          ),
+          return Stack(
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: constraints.maxWidth > 700
+                        ? 680
+                        : double.infinity,
                   ),
-                  SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                      child: ChatComposer(
-                        controller: _inputController,
-                        isSending: _isSending,
-                        isListening: _isListening,
-                        soundLevel: _soundLevel,
-                        onGallery: _openGalleryFlow,
-                        onPushToTalkStart: _beginPushToTalk,
-                        onPushToTalkEnd: _endPushToTalk,
-                        onSend: () =>
-                            unawaited(_sendChat(_inputController.text)),
-                        onStop: _stopCurrentRun,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: _messages.isEmpty
+                            ? const _EmptyChatState()
+                            : ListView.builder(
+                                controller: _scrollController,
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  12,
+                                  16,
+                                  12,
+                                ),
+                                itemCount: _messages.length,
+                                itemBuilder: (context, index) {
+                                  return ChatMessageView(
+                                    message: _messages[index],
+                                    showLocationPrompt: _shouldAskForLocation(
+                                      _messages[index],
+                                    ),
+                                    isLocating: _isLocating,
+                                    autoReadEnabled: _autoReadEnabled,
+                                    isSpeaking:
+                                        _speakingMessageId ==
+                                        _messages[index].id,
+                                    onShareLocation: _shareCurrentLocation,
+                                    onBookRecommendation: _sendChat,
+                                    onToggleAutoRead: _toggleAutoRead,
+                                  );
+                                },
+                              ),
+                      ),
+                      SafeArea(
+                        top: false,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                          child: ChatComposer(
+                            controller: _inputController,
+                            isSending: _isSending,
+                            isListening: _isListening,
+                            soundLevel: _soundLevel,
+                            onGallery: _openGalleryFlow,
+                            onHoldStart: _beginPushToTalk,
+                            onHoldEnd: _endPushToTalk,
+                            onTapStart: _beginPushToTalk,
+                            onConfirmListening: _endPushToTalk,
+                            onCancelListening: _cancelDictation,
+                            onSend: () =>
+                                unawaited(_sendChat(_inputController.text)),
+                            onStop: _stopCurrentRun,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // Rendered centered on screen — away from the push-to-talk
+              // button entirely — and non-interactive, so it can never
+              // intercept the pointer release that ends the long press.
+              if (_isListening)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 28),
+                        child: VoiceListeningPanel(
+                          transcript: _inputController.text,
+                          soundLevel: _soundLevel,
+                        ),
                       ),
                     ),
                   ),
-                ],
-              ),
-            ),
+                ),
+            ],
           );
         },
       ),

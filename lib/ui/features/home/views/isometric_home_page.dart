@@ -367,7 +367,7 @@ class _PetStatCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        'Pet Stats',
+                        title,
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(
                               color: PetTheme.ivory,
