@@ -13,12 +13,14 @@ class IsometricHomePage extends StatefulWidget {
   const IsometricHomePage({
     required this.captureScreenBuilder,
     required this.streakScreenBuilder,
+    required this.chatScreenBuilder,
     this.viewModel,
     super.key,
   });
 
   final WidgetBuilder captureScreenBuilder;
   final WidgetBuilder streakScreenBuilder;
+  final WidgetBuilder chatScreenBuilder;
   final IsometricHomeViewModel? viewModel;
 
   @override
@@ -83,6 +85,8 @@ class _IsometricHomePageState extends State<IsometricHomePage>
                     _openDestination(widget.captureScreenBuilder),
                 onOpenStreaks: () =>
                     _openDestination(widget.streakScreenBuilder),
+                onOpenChat: () =>
+                    _openDestination(widget.chatScreenBuilder),
               );
             },
           );
@@ -99,6 +103,7 @@ class _PetRoomScene extends StatelessWidget {
     required this.onPetTap,
     required this.onOpenCamera,
     required this.onOpenStreaks,
+    required this.onOpenChat,
   });
 
   final PetRoomState state;
@@ -106,6 +111,7 @@ class _PetRoomScene extends StatelessWidget {
   final ValueChanged<String> onPetTap;
   final VoidCallback onOpenCamera;
   final VoidCallback onOpenStreaks;
+  final VoidCallback onOpenChat;
 
   @override
   Widget build(BuildContext context) {
@@ -182,6 +188,25 @@ class _PetRoomScene extends StatelessWidget {
                   icon: Icons.local_fire_department_rounded,
                   label: 'Pet Moment Streaks',
                   onPressed: onOpenStreaks,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: 12,
+          right: isCompact ? 16 : 32,
+          child: SafeArea(
+            bottom: false,
+            child: Tooltip(
+              message: 'Open pet agent chat',
+              child: IconButton(
+                onPressed: onOpenChat,
+                icon: const Icon(Icons.chat_bubble_outline_rounded),
+                color: Colors.white,
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  overlayColor: Colors.white24,
                 ),
               ),
             ),
@@ -435,13 +460,13 @@ class _GlassCommandButton extends StatelessWidget {
   const _GlassCommandButton({
     required this.tooltip,
     required this.icon,
-    required this.label,
+    this.label,
     required this.onPressed,
   });
 
   final String tooltip;
   final IconData icon;
-  final String label;
+  final String? label;
   final VoidCallback onPressed;
 
   @override
@@ -452,23 +477,37 @@ class _GlassCommandButton extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Tooltip(
           message: tooltip,
-          child: OutlinedButton.icon(
-            onPressed: onPressed,
-            style: OutlinedButton.styleFrom(
-              backgroundColor: const Color(0x66171B22),
-              foregroundColor: PetTheme.ivory,
-              side: const BorderSide(color: Color(0x66FFFFFF)),
-              minimumSize: const Size(48, 48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            icon: Icon(icon, color: PetTheme.coral),
-            label: Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
+          child: label == null || label!.isEmpty
+              ? IconButton(
+                  onPressed: onPressed,
+                  icon: Icon(icon, color: PetTheme.coral),
+                  style: IconButton.styleFrom(
+                    backgroundColor: const Color(0x66171B22),
+                    foregroundColor: PetTheme.ivory,
+                    side: const BorderSide(color: Color(0x66FFFFFF)),
+                    minimumSize: const Size(48, 48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                )
+              : OutlinedButton.icon(
+                  onPressed: onPressed,
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: const Color(0x66171B22),
+                    foregroundColor: PetTheme.ivory,
+                    side: const BorderSide(color: Color(0x66FFFFFF)),
+                    minimumSize: const Size(48, 48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: Icon(icon, color: PetTheme.coral),
+                  label: Text(
+                    label!,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
         ),
       ),
     );

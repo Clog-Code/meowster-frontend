@@ -11,6 +11,8 @@ Widget _buildTestApp(IsometricHomeViewModel viewModel) {
           const Scaffold(body: Center(child: Text('Camera destination'))),
       streakScreenBuilder: (context) =>
           const Scaffold(body: Center(child: Text('Streak destination'))),
+      chatScreenBuilder: (context) =>
+          const Scaffold(body: Center(child: Text('Chat destination'))),
     ),
   );
 }
