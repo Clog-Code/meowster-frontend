@@ -513,6 +513,12 @@ class _CaptureScreenState extends State<CaptureScreen>
     if (preview == null || _savingMoment || _momentSaved) return;
     setState(() => _savingMoment = true);
     try {
+      if (preview.path != null) {
+        await LocalMomentStorage.instance.saveMoment(
+          sourcePath: preview.path!,
+          isVideo: preview.kind == CaptureMediaKind.video,
+        );
+      }
       await _recordPetMoment(preview);
       if (!mounted) return;
       setState(() => _momentSaved = true);
