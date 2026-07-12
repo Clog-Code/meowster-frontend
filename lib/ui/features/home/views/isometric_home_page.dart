@@ -780,6 +780,7 @@ class _AddPetDialogState extends State<_AddPetDialog> {
 
     final data = <String, String>{
       'pet_id': DateTime.now().microsecondsSinceEpoch.toString(),
+      'owner_id': 'owner-01',
       'name': _nameCtrl.text.trim(),
       'species': _resolvedSpecies,
     };
