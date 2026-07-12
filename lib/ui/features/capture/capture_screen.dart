@@ -18,6 +18,7 @@ import '../../../domain/models/pet_streak_summary.dart';
 import '../../core/pet_theme.dart';
 import '../chat/agent_chat_screen.dart';
 import '../streak/pet_moment_streak_screen.dart';
+import '../../../data/services/local_moment_storage.dart';
 
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({
@@ -373,31 +374,37 @@ class _CaptureScreenState extends State<CaptureScreen> {
   }
 
   Future<void> _saveMoment() async {
-    final preview = _preview;
-    if (preview == null || _savingMoment || _momentSaved) return;
-    setState(() => _savingMoment = true);
-    try {
-      await _recordPetMoment(preview);
-      if (!mounted) return;
-      setState(() {
-        _savingMoment = false;
-        _momentSaved = true;
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Moment saved.')));
-    } on Object catch (error) {
-      if (!mounted) return;
-      setState(() => _savingMoment = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not save moment. ${error.toString().replaceFirst('Exception: ', '')}',
+      final preview = _preview;
+      if (preview == null || _savingMoment || _momentSaved) return;
+      setState(() => _savingMoment = true);
+      try {
+        if (preview.path != null) {
+          await LocalMomentStorage.instance.saveMoment(
+            sourcePath: preview.path!,
+            isVideo: preview.kind == CaptureMediaKind.video,
+          );
+        }
+        await _recordPetMoment(preview);
+        if (!mounted) return;
+        setState(() {
+          _savingMoment = false;
+          _momentSaved = true;
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Moment saved.')));
+      } on Object catch (error) {
+        if (!mounted) return;
+        setState(() => _savingMoment = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Could not save moment. ${error.toString().replaceFirst('Exception: ', '')}',
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
-  }
 
   void _askAgent() {
     final preview = _preview;
