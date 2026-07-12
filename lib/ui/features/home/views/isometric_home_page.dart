@@ -41,8 +41,8 @@ class _IsometricHomePageState extends State<IsometricHomePage>
   void initState() {
     super.initState();
     _ownsViewModel = widget.viewModel == null;
-    _viewModel = widget.viewModel ??
-        IsometricHomeViewModel(client: widget.client);
+    _viewModel =
+        widget.viewModel ?? IsometricHomeViewModel(client: widget.client);
     WidgetsBinding.instance.addObserver(this);
     _viewModel.startStandby();
   }
@@ -67,30 +67,24 @@ class _IsometricHomePageState extends State<IsometricHomePage>
   }
 
   Future<void> _showAddPetModal() async {
-    final client = widget.client;
-    if (client == null) return;
-
-    final result = await showDialog<Map<String, String>>(
+    final result = await showDialog<Object>(
       context: context,
-      builder: (_) => _AddPetDialog(client: client),
+      builder: (_) => _AddPetDialog(client: widget.client!),
     );
-    if (result == null || !mounted) return;
-
-    try {
-      await client.createPetProfile(result);
-    } on AgentConnectionException {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to add pet. Is the backend running?')),
-      );
-      return;
-    }
-
-    await _viewModel.loadPets();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${result['name'] ?? 'Pet'} added!')),
-      );
+    if (!mounted) return;
+    if (result == 'chat') {
+      _openDestination(widget.chatScreenBuilder);
+    } else if (result is Map<String, String>) {
+      try {
+        await widget.client!.createPetProfile(result);
+        _viewModel.resumeStandby();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Failed to add pet: $e')));
+        }
+      }
     }
   }
 
@@ -119,8 +113,7 @@ class _IsometricHomePageState extends State<IsometricHomePage>
                     _openDestination(widget.captureScreenBuilder),
                 onOpenStreaks: () =>
                     _openDestination(widget.streakScreenBuilder),
-                onOpenChat: () =>
-                    _openDestination(widget.chatScreenBuilder),
+                onOpenChat: () => _openDestination(widget.chatScreenBuilder),
                 onAddPet: _showAddPetModal,
               );
             },
@@ -173,10 +166,7 @@ class _PetRoomScene extends StatelessWidget {
               gradient: RadialGradient(
                 center: Alignment.center,
                 radius: 0.85,
-                colors: [
-                  Colors.transparent,
-                  const Color(0x77000000),
-                ],
+                colors: [Colors.transparent, const Color(0x77000000)],
               ),
             ),
           ),
@@ -187,7 +177,7 @@ class _PetRoomScene extends StatelessWidget {
             minScale: 0.4,
             maxScale: 3,
             boundaryMargin: EdgeInsets.symmetric(
-              horizontal: constraints.maxWidth * 0.15, 
+              horizontal: constraints.maxWidth * 0.15,
               vertical: constraints.maxHeight * 0.4,
             ),
             child: SizedBox(
@@ -500,9 +490,7 @@ class _PetStatCardState extends State<_PetStatCard> {
                         ),
                         const SizedBox(width: 4),
                         Icon(
-                          _expanded
-                              ? Icons.expand_less
-                              : Icons.expand_more,
+                          _expanded ? Icons.expand_less : Icons.expand_more,
                           color: PetTheme.muted,
                           size: 20,
                         ),
@@ -638,9 +626,9 @@ class _AddPetDialogState extends State<_AddPetDialog> {
             borderRadius: BorderRadius.circular(16),
             side: const BorderSide(color: Color(0x44FFFFFF)),
           ),
-          titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-          contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          actionsPadding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+          contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
           title: Row(
             children: [
               Container(
@@ -652,158 +640,270 @@ class _AddPetDialogState extends State<_AddPetDialog> {
                 child: const Icon(Icons.pets, color: PetTheme.sage, size: 20),
               ),
               const SizedBox(width: 10),
-              const Text('Add New Pet',
-                  style: TextStyle(
-                      color: PetTheme.ivory,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16)),
+              const Text(
+                'Add New Pet',
+                style: TextStyle(
+                  color: PetTheme.ivory,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
             ],
           ),
           content: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 380),
+            constraints: const BoxConstraints(maxHeight: 420),
             child: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(child: _field('Name', _nameCtrl, autoFocus: true)),
-                      const SizedBox(width: 10),
-                      Expanded(child: _field('Species', _speciesCtrl)),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  GestureDetector(
-                    onTap: _pickPhoto,
-                    child: Container(
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: const Color(0x22FFFFFF),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0x33FFFFFF)),
-                        image: _photoFile != null
-                            ? DecorationImage(
-                                image: FileImage(_photoFile!),
-                                fit: BoxFit.cover,
-                              )
-                            : null,
-                      ),
-                      child: _photoFile == null
-                          ? const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.camera_alt_outlined,
-                                    color: PetTheme.muted, size: 20),
-                                SizedBox(width: 6),
-                                Text('Upload photo (optional)',
-                                    style: TextStyle(
-                                        color: PetTheme.muted, fontSize: 13)),
-                              ],
-                            )
-                          : Stack(
-                              alignment: Alignment.topRight,
-                              children: [
-                                const SizedBox.expand(),
-                                Padding(
-                                  padding: const EdgeInsets.all(4),
-                                  child: GestureDetector(
-                                    onTap: () =>
-                                        setState(() => _photoFile = null),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(2),
-                                      decoration: const BoxDecoration(
-                                        color: Colors.black54,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(Icons.close,
-                                          color: Colors.white, size: 14),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: () => setState(
-                        () => _detailsExpanded = !_detailsExpanded),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      decoration: BoxDecoration(
-                        border: Border(
-                            bottom: _detailsExpanded
-                                ? const BorderSide(color: Color(0x22FFFFFF))
-                                : BorderSide.none),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      Row(
                         children: [
-                          Text(
-                            _detailsExpanded
-                                ? 'Hide details'
-                                : 'More details (optional)',
-                            style: const TextStyle(
-                                color: PetTheme.muted, fontSize: 12),
+                          Expanded(
+                            child: _field('Name', _nameCtrl, autoFocus: true),
                           ),
-                          Icon(
-                            _detailsExpanded
-                                ? Icons.expand_less
-                                : Icons.expand_more,
-                            color: PetTheme.muted,
-                            size: 18,
+                          const SizedBox(width: 12),
+                          Expanded(child: _field('Species', _speciesCtrl)),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      GestureDetector(
+                        onTap: _pickPhoto,
+                        child: Container(
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: PetTheme.panelSoft,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: const Color(0x33FFFFFF)),
+                            image: _photoFile != null
+                                ? DecorationImage(
+                                    image: FileImage(_photoFile!),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
+                          ),
+                          child: _photoFile == null
+                              ? const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.camera_alt_outlined,
+                                      color: PetTheme.muted,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Upload photo',
+                                      style: TextStyle(
+                                        color: PetTheme.muted,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Stack(
+                                  alignment: Alignment.topRight,
+                                  children: [
+                                    const SizedBox.expand(),
+                                    Padding(
+                                      padding: const EdgeInsets.all(6),
+                                      child: GestureDetector(
+                                        onTap: () =>
+                                            setState(() => _photoFile = null),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: const BoxDecoration(
+                                            color: Colors.black54,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.close,
+                                            color: Colors.white,
+                                            size: 14,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      InkWell(
+                        onTap: () => setState(
+                          () => _detailsExpanded = !_detailsExpanded,
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: _detailsExpanded
+                                  ? const BorderSide(color: Color(0x22FFFFFF))
+                                  : BorderSide.none,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                _detailsExpanded
+                                    ? 'Hide details'
+                                    : 'More details',
+                                style: const TextStyle(
+                                  color: PetTheme.muted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                _detailsExpanded
+                                    ? Icons.expand_less
+                                    : Icons.expand_more,
+                                color: PetTheme.muted,
+                                size: 18,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (_detailsExpanded) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(child: _field('Breed', _breedCtrl)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _field(
+                                'Weight (kg)',
+                                _weightCtrl,
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _field('Life Stage', _lifeStageCtrl),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _field(
+                                'Known Conditions',
+                                _conditionsCtrl,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        _field('Delivery Address', _addressCtrl),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _field('Preferred Clinic', _clinicCtrl),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _field('Food Brand', _foodBrandCtrl),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Divider(color: Color(0x33FFFFFF), height: 1),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              'OR',
+                              style: TextStyle(
+                                color: PetTheme.muted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const Expanded(
+                            child: Divider(color: Color(0x33FFFFFF), height: 1),
                           ),
                         ],
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                      InkWell(
+                        onTap: () => Navigator.of(context).pop('chat'),
+                        borderRadius: BorderRadius.circular(24),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0x18FFFFFF),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: const Color(0x22FFFFFF)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: PetTheme.sage.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.chat_outlined,
+                                  color: PetTheme.sage,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Chat with Agent',
+                                      style: TextStyle(
+                                        color: PetTheme.ivory,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      'Snap a photo and tell the agent its name',
+                                      style: TextStyle(
+                                        color: PetTheme.muted,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(
+                                Icons.chevron_right,
+                                color: PetTheme.muted,
+                                size: 20,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                    ],
                   ),
-                  if (_detailsExpanded) ...[
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Expanded(
-                            child: _field('Breed', _breedCtrl, compact: true)),
-                        const SizedBox(width: 10),
-                        Expanded(
-                            child: _field('Weight (kg)', _weightCtrl,
-                                keyboardType: TextInputType.number,
-                                compact: true)),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        Expanded(
-                            child: _field('Life Stage', _lifeStageCtrl,
-                                compact: true)),
-                        const SizedBox(width: 10),
-                        Expanded(
-                            child: _field('Known Conditions', _conditionsCtrl,
-                                compact: true)),
-                      ],
-                    ),
-                    _field('Delivery Address', _addressCtrl, compact: true),
-                    Row(
-                      children: [
-                        Expanded(
-                            child: _field('Preferred Clinic', _clinicCtrl,
-                                compact: true)),
-                        const SizedBox(width: 10),
-                        Expanded(
-                            child: _field('Food Brand', _foodBrandCtrl,
-                                compact: true)),
-                      ],
-                    ),
-                  ],
-                  ],
                 ),
               ),
             ),
-          ),
           ),
           actions: [
             TextButton(
@@ -824,15 +924,16 @@ class _AddPetDialogState extends State<_AddPetDialog> {
                       if (_photoFile != null) {
                         setState(() => _isUploading = true);
                         try {
-                          final uploaded =
-                              await widget.client.uploadMedia(_photoFile!);
+                          final uploaded = await widget.client.uploadMedia(
+                            _photoFile!,
+                          );
                           _uploadedImagePath = uploaded.path;
                         } on MediaUploadException {
                           if (!mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                                content: Text(
-                                    'Photo upload failed. Try again.')),
+                              content: Text('Photo upload failed. Try again.'),
+                            ),
                           );
                           setState(() => _isUploading = false);
                           return;
@@ -840,8 +941,7 @@ class _AddPetDialogState extends State<_AddPetDialog> {
                       }
 
                       final data = <String, String>{
-                        'pet_id': DateTime.now()
-                            .microsecondsSinceEpoch
+                        'pet_id': DateTime.now().microsecondsSinceEpoch
                             .toString(),
                         'name': _nameCtrl.text,
                         'species': _speciesCtrl.text,
@@ -887,43 +987,48 @@ class _AddPetDialogState extends State<_AddPetDialog> {
     );
   }
 
-  Widget _field(String label, TextEditingController ctrl,
-      {TextInputType? keyboardType, bool autoFocus = false,
-      bool compact = false}) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: compact ? 8 : 10),
-      child: TextFormField(
-        controller: ctrl,
-        keyboardType: keyboardType,
-        autofocus: autoFocus,
-        style: const TextStyle(color: PetTheme.ivory, fontSize: 13),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle:
-              const TextStyle(color: PetTheme.muted, fontSize: 12),
-          isDense: true,
-          contentPadding: compact
-              ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
-              : const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          enabledBorder: const OutlineInputBorder(
-            borderSide: BorderSide(color: Color(0x33FFFFFF)),
-            borderRadius: BorderRadius.all(Radius.circular(8)),
-          ),
-          focusedBorder: const OutlineInputBorder(
-            borderSide: BorderSide(color: PetTheme.sage),
-            borderRadius: BorderRadius.all(Radius.circular(8)),
-          ),
+  Widget _field(
+    String label,
+    TextEditingController ctrl, {
+    TextInputType? keyboardType,
+    bool autoFocus = false,
+  }) {
+    return TextFormField(
+      controller: ctrl,
+      keyboardType: keyboardType,
+      autofocus: autoFocus,
+      style: const TextStyle(color: PetTheme.ivory, fontSize: 13),
+      decoration: InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: PetTheme.panelSoft,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(24),
+          borderSide: BorderSide.none,
         ),
-        validator: (v) {
-          if (label == 'Name' && (v == null || v.trim().isEmpty)) {
-            return 'Name is required';
-          }
-          if (label == 'Species' && (v == null || v.trim().isEmpty)) {
-            return 'Species is required';
-          }
-          return null;
-        },
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(24),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(24),
+          borderSide: const BorderSide(color: PetTheme.sage),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
+        labelStyle: const TextStyle(color: PetTheme.muted, fontSize: 12),
       ),
+      validator: (v) {
+        if (label == 'Name' && (v == null || v.trim().isEmpty)) {
+          return 'Name is required';
+        }
+        if (label == 'Species' && (v == null || v.trim().isEmpty)) {
+          return 'Species is required';
+        }
+        return null;
+      },
     );
   }
 }
