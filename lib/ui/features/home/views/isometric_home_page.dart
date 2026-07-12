@@ -547,7 +547,10 @@ class _PetStatCardState extends State<_PetStatCard> {
                 const SizedBox(height: 12),
                 _StatRow(label: 'Name', value: widget.stats.name),
                 const SizedBox(height: 8),
-                _StatRow(label: 'Species', value: widget.stats.species),
+                _StatRow(
+                  label: widget.stats.breed != null ? 'Breed' : 'Species',
+                  value: widget.stats.breed ?? widget.stats.species,
+                ),
                 const SizedBox(height: 8),
                 _StatRow(label: 'Emotion', value: widget.stats.emotion),
                 if (_extraStats.isNotEmpty) ...[
@@ -594,7 +597,7 @@ class _PetStatCardState extends State<_PetStatCard> {
       widgets.add(_StatRow(label: label, value: value));
     }
 
-    if (s.breed != null) addRow('Breed', s.breed!);
+    if (s.breed != null) addRow('Species', s.species);
     if (s.weightKg != null) {
       addRow('Weight', '${s.weightKg!.toStringAsFixed(1)} kg');
     }
