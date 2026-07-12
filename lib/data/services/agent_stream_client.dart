@@ -232,6 +232,9 @@ abstract class AgentStreamClient {
 
   /// List all registered pets (pet_id, name, species).
   Future<List<Map<String, dynamic>>> fetchPetProfiles();
+
+  /// Create or update a pet profile.
+  Future<void> createPetProfile(Map<String, String> profile);
 }
 
 class AgentApiClient implements AgentStreamClient {
@@ -446,6 +449,31 @@ class AgentApiClient implements AgentStreamClient {
       throw AgentConnectionException('Could not connect to $uri: $error');
     } finally {
       client.close();
+    }
+  }
+
+  @override
+  Future<void> createPetProfile(Map<String, String> profile) async {
+    final uri = baseUri.resolve('/pet-profile');
+    final body = jsonEncode(profile);
+    final httpClient = HttpClient();
+    httpClient.connectionTimeout = const Duration(seconds: 8);
+    try {
+      final request = await httpClient.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
+      request.write(body);
+      final response = await request.close();
+      final responseBody = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw AgentConnectionException(
+          'Failed to create pet profile (${response.statusCode}): $responseBody',
+        );
+      }
+    } on SocketException catch (error) {
+      throw AgentConnectionException('Could not connect to $uri: $error');
+    } finally {
+      httpClient.close();
     }
   }
 }

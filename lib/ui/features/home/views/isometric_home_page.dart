@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/pet_theme.dart';
 import '../../../../data/services/agent_stream_client.dart';
@@ -64,6 +66,34 @@ class _IsometricHomePageState extends State<IsometricHomePage>
     if (mounted) _viewModel.resumeStandby();
   }
 
+  Future<void> _showAddPetModal() async {
+    final client = widget.client;
+    if (client == null) return;
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (_) => _AddPetDialog(client: client),
+    );
+    if (result == null || !mounted) return;
+
+    try {
+      await client.createPetProfile(result);
+    } on AgentConnectionException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to add pet. Is the backend running?')),
+      );
+      return;
+    }
+
+    await _viewModel.loadPets();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${result['name'] ?? 'Pet'} added!')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -91,6 +121,7 @@ class _IsometricHomePageState extends State<IsometricHomePage>
                     _openDestination(widget.streakScreenBuilder),
                 onOpenChat: () =>
                     _openDestination(widget.chatScreenBuilder),
+                onAddPet: _showAddPetModal,
               );
             },
           );
@@ -108,6 +139,7 @@ class _PetRoomScene extends StatelessWidget {
     required this.onOpenCamera,
     required this.onOpenStreaks,
     required this.onOpenChat,
+    required this.onAddPet,
   });
 
   final PetRoomState state;
@@ -116,6 +148,7 @@ class _PetRoomScene extends StatelessWidget {
   final VoidCallback onOpenCamera;
   final VoidCallback onOpenStreaks;
   final VoidCallback onOpenChat;
+  final VoidCallback onAddPet;
 
   @override
   Widget build(BuildContext context) {
@@ -202,17 +235,34 @@ class _PetRoomScene extends StatelessWidget {
           right: isCompact ? 16 : 32,
           child: SafeArea(
             bottom: false,
-            child: Tooltip(
-              message: 'Open pet agent chat',
-              child: IconButton(
-                onPressed: onOpenChat,
-                icon: const Icon(Icons.chat_bubble_outline_rounded),
-                color: Colors.white,
-                style: IconButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  overlayColor: Colors.white24,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Tooltip(
+                  message: 'Add a new pet',
+                  child: IconButton(
+                    onPressed: onAddPet,
+                    icon: const Icon(Icons.add),
+                    color: Colors.white,
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      overlayColor: Colors.white24,
+                    ),
+                  ),
                 ),
-              ),
+                Tooltip(
+                  message: 'Open pet agent chat',
+                  child: IconButton(
+                    onPressed: onOpenChat,
+                    icon: const Icon(Icons.chat_bubble_outline_rounded),
+                    color: Colors.white,
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      overlayColor: Colors.white24,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -524,6 +574,356 @@ class _StatRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _AddPetDialog extends StatefulWidget {
+  const _AddPetDialog({required this.client});
+
+  final AgentStreamClient client;
+
+  @override
+  State<_AddPetDialog> createState() => _AddPetDialogState();
+}
+
+class _AddPetDialogState extends State<_AddPetDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameCtrl = TextEditingController();
+  final _speciesCtrl = TextEditingController(text: 'Cat');
+  final _breedCtrl = TextEditingController();
+  final _weightCtrl = TextEditingController();
+  final _lifeStageCtrl = TextEditingController();
+  final _conditionsCtrl = TextEditingController();
+  final _addressCtrl = TextEditingController();
+  final _clinicCtrl = TextEditingController();
+  final _foodBrandCtrl = TextEditingController();
+  final _picker = ImagePicker();
+
+  File? _photoFile;
+  String? _uploadedImagePath;
+  bool _detailsExpanded = false;
+  bool _isUploading = false;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _speciesCtrl.dispose();
+    _breedCtrl.dispose();
+    _weightCtrl.dispose();
+    _lifeStageCtrl.dispose();
+    _conditionsCtrl.dispose();
+    _addressCtrl.dispose();
+    _clinicCtrl.dispose();
+    _foodBrandCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickPhoto() async {
+    final file = await _picker.pickImage(source: ImageSource.gallery);
+    if (file == null) return;
+    setState(() => _photoFile = File(file.path));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: AlertDialog(
+          backgroundColor: const Color(0xCC171B22),
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0x44FFFFFF)),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+          contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: PetTheme.sage.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.pets, color: PetTheme.sage, size: 20),
+              ),
+              const SizedBox(width: 10),
+              const Text('Add New Pet',
+                  style: TextStyle(
+                      color: PetTheme.ivory,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16)),
+            ],
+          ),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 380),
+            child: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: _field('Name', _nameCtrl, autoFocus: true)),
+                      const SizedBox(width: 10),
+                      Expanded(child: _field('Species', _speciesCtrl)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: _pickPhoto,
+                    child: Container(
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: const Color(0x22FFFFFF),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0x33FFFFFF)),
+                        image: _photoFile != null
+                            ? DecorationImage(
+                                image: FileImage(_photoFile!),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                      ),
+                      child: _photoFile == null
+                          ? const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.camera_alt_outlined,
+                                    color: PetTheme.muted, size: 20),
+                                SizedBox(width: 6),
+                                Text('Upload photo (optional)',
+                                    style: TextStyle(
+                                        color: PetTheme.muted, fontSize: 13)),
+                              ],
+                            )
+                          : Stack(
+                              alignment: Alignment.topRight,
+                              children: [
+                                const SizedBox.expand(),
+                                Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: GestureDetector(
+                                    onTap: () =>
+                                        setState(() => _photoFile = null),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(2),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.black54,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.close,
+                                          color: Colors.white, size: 14),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () => setState(
+                        () => _detailsExpanded = !_detailsExpanded),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      decoration: BoxDecoration(
+                        border: Border(
+                            bottom: _detailsExpanded
+                                ? const BorderSide(color: Color(0x22FFFFFF))
+                                : BorderSide.none),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            _detailsExpanded
+                                ? 'Hide details'
+                                : 'More details (optional)',
+                            style: const TextStyle(
+                                color: PetTheme.muted, fontSize: 12),
+                          ),
+                          Icon(
+                            _detailsExpanded
+                                ? Icons.expand_less
+                                : Icons.expand_more,
+                            color: PetTheme.muted,
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_detailsExpanded) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                            child: _field('Breed', _breedCtrl, compact: true)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                            child: _field('Weight (kg)', _weightCtrl,
+                                keyboardType: TextInputType.number,
+                                compact: true)),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                            child: _field('Life Stage', _lifeStageCtrl,
+                                compact: true)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                            child: _field('Known Conditions', _conditionsCtrl,
+                                compact: true)),
+                      ],
+                    ),
+                    _field('Delivery Address', _addressCtrl, compact: true),
+                    Row(
+                      children: [
+                        Expanded(
+                            child: _field('Preferred Clinic', _clinicCtrl,
+                                compact: true)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                            child: _field('Food Brand', _foodBrandCtrl,
+                                compact: true)),
+                      ],
+                    ),
+                  ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                foregroundColor: PetTheme.muted,
+                textStyle: const TextStyle(fontSize: 13),
+              ),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: _isUploading
+                  ? null
+                  : () async {
+                      if (!_formKey.currentState!.validate()) return;
+
+                      if (_photoFile != null) {
+                        setState(() => _isUploading = true);
+                        try {
+                          final uploaded =
+                              await widget.client.uploadMedia(_photoFile!);
+                          _uploadedImagePath = uploaded.path;
+                        } on MediaUploadException {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text(
+                                    'Photo upload failed. Try again.')),
+                          );
+                          setState(() => _isUploading = false);
+                          return;
+                        }
+                      }
+
+                      final data = <String, String>{
+                        'pet_id': DateTime.now()
+                            .microsecondsSinceEpoch
+                            .toString(),
+                        'name': _nameCtrl.text,
+                        'species': _speciesCtrl.text,
+                        if (_breedCtrl.text.isNotEmpty)
+                          'breed': _breedCtrl.text,
+                        if (_weightCtrl.text.isNotEmpty)
+                          'weight_kg': _weightCtrl.text,
+                        if (_lifeStageCtrl.text.isNotEmpty)
+                          'life_stage': _lifeStageCtrl.text,
+                        if (_conditionsCtrl.text.isNotEmpty)
+                          'known_conditions': _conditionsCtrl.text,
+                        if (_addressCtrl.text.isNotEmpty)
+                          'delivery_address': _addressCtrl.text,
+                        if (_clinicCtrl.text.isNotEmpty)
+                          'preferred_clinic': _clinicCtrl.text,
+                        if (_foodBrandCtrl.text.isNotEmpty)
+                          'preferred_food_brand': _foodBrandCtrl.text,
+                        if (_uploadedImagePath != null)
+                          'image_path': _uploadedImagePath!,
+                      };
+                      if (mounted) Navigator.of(context).pop(data);
+                    },
+              style: FilledButton.styleFrom(
+                backgroundColor: PetTheme.sage,
+                foregroundColor: const Color(0xFF1A1E26),
+                textStyle: const TextStyle(fontSize: 13),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+              ),
+              child: _isUploading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF1A1E26),
+                      ),
+                    )
+                  : const Text('Add Pet'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _field(String label, TextEditingController ctrl,
+      {TextInputType? keyboardType, bool autoFocus = false,
+      bool compact = false}) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: compact ? 8 : 10),
+      child: TextFormField(
+        controller: ctrl,
+        keyboardType: keyboardType,
+        autofocus: autoFocus,
+        style: const TextStyle(color: PetTheme.ivory, fontSize: 13),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle:
+              const TextStyle(color: PetTheme.muted, fontSize: 12),
+          isDense: true,
+          contentPadding: compact
+              ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+              : const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          enabledBorder: const OutlineInputBorder(
+            borderSide: BorderSide(color: Color(0x33FFFFFF)),
+            borderRadius: BorderRadius.all(Radius.circular(8)),
+          ),
+          focusedBorder: const OutlineInputBorder(
+            borderSide: BorderSide(color: PetTheme.sage),
+            borderRadius: BorderRadius.all(Radius.circular(8)),
+          ),
+        ),
+        validator: (v) {
+          if (label == 'Name' && (v == null || v.trim().isEmpty)) {
+            return 'Name is required';
+          }
+          if (label == 'Species' && (v == null || v.trim().isEmpty)) {
+            return 'Species is required';
+          }
+          return null;
+        },
+      ),
     );
   }
 }

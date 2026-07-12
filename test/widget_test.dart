@@ -1567,6 +1567,9 @@ class FakeAgentClient implements AgentStreamClient {
   Future<List<Map<String, dynamic>>> fetchPetProfiles() async {
     return [];
   }
+
+  @override
+  Future<void> createPetProfile(Map<String, String> profile) async {}
 }
 
 class CapturingHttpClient extends http.BaseClient {
