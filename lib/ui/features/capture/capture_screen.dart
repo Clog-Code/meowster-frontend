@@ -546,7 +546,12 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   Future<void> _saveMoment() async {
     final preview = _preview;
-    if (preview == null || _savingMoment || _momentSaved) return;
+    if (preview == null ||
+        preview.kind == CaptureMediaKind.demo ||
+        _savingMoment ||
+        _momentSaved) {
+      return;
+    }
     setState(() => _savingMoment = true);
     try {
       if (preview.path != null) {
@@ -559,7 +564,9 @@ class _CaptureScreenState extends State<CaptureScreen>
       if (uploadedImagePath == null && preview.path != null) {
         uploadedImagePath = await _uploadForVisualSearch(File(preview.path!));
       }
-      final updatedPreview = preview.copyWith(uploadedImagePath: uploadedImagePath);
+      final updatedPreview = preview.copyWith(
+        uploadedImagePath: uploadedImagePath,
+      );
       await _recordPetMoment(updatedPreview);
       if (!mounted) return;
       setState(() => _momentSaved = true);
@@ -585,6 +592,27 @@ class _CaptureScreenState extends State<CaptureScreen>
   Future<void> _askAgent() async {
     final preview = _preview;
     if (preview == null) return;
+    final isDemo = preview.kind == CaptureMediaKind.demo;
+    if (isDemo) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Demo capture'),
+          content: const Text('Demo capture will not be count as a streak'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
     await _playTransition(CaptureTransitionTarget.agent);
     if (!mounted) return;
     await Navigator.of(context).push(
@@ -596,6 +624,7 @@ class _CaptureScreenState extends State<CaptureScreen>
           textToSpeechService: widget.textToSpeechService,
           autoReadPreferenceStore: widget.autoReadPreferenceStore,
           initialCapture: preview,
+          initialCaptureCountsTowardStreak: !isDemo,
         ),
       ),
     );
@@ -1479,11 +1508,12 @@ class _StoryCaptureControls extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        _RoundIconButton(
-          tooltip: analyzing ? 'Analyzing pet moment' : 'Upload from gallery',
-          icon: analyzing ? Icons.hourglass_top : Icons.add,
-          onPressed: analyzing || recording ? null : onGallery,
-        ),
+        // _RoundIconButton(
+        //   tooltip: analyzing ? 'Analyzing pet moment' : 'Upload from gallery',
+        //   icon: analyzing ? Icons.hourglass_top : Icons.add,
+        //   onPressed: analyzing || recording ? null : onGallery,
+        // ),
+        const SizedBox.square(dimension: 52),
         Semantics(
           button: true,
           label: 'Tap for photo. Hold for video.',
@@ -1638,6 +1668,7 @@ class _ReplayModeUi extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canSave = result.kind != CaptureMediaKind.demo;
     return LayoutBuilder(
       builder: (context, constraints) {
         return Column(
@@ -1661,6 +1692,7 @@ class _ReplayModeUi extends StatelessWidget {
             const Spacer(),
             _PreviewActions(
               saving: saving,
+              canSave: canSave,
               onRetake: onRetake,
               onSave: onSave,
               onAskAgent: onAskAgent,
@@ -1675,12 +1707,14 @@ class _ReplayModeUi extends StatelessWidget {
 class _PreviewActions extends StatelessWidget {
   const _PreviewActions({
     required this.saving,
+    required this.canSave,
     required this.onRetake,
     required this.onSave,
     required this.onAskAgent,
   });
 
   final bool saving;
+  final bool canSave;
   final VoidCallback onRetake;
   final VoidCallback onSave;
   final VoidCallback onAskAgent;
@@ -1708,22 +1742,34 @@ class _PreviewActions extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: OutlinedButton.icon(
-                onPressed: saving ? null : onSave,
-                icon: saving
-                    ? const SizedBox.square(
-                        dimension: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.bookmark_add_outlined),
-                label: const Text('Save Moment'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: PetTheme.ivory,
-                  side: const BorderSide(color: Color(0x80FFFFFF)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+              child: Tooltip(
+                message: canSave
+                    ? 'Save this pet moment'
+                    : 'Demo captures cannot be saved as pet moments',
+                child: OutlinedButton.icon(
+                  onPressed: canSave && !saving ? onSave : null,
+                  icon: saving
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.bookmark_add_outlined),
+                  label: const Text('Save Moment'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: PetTheme.ivory,
+                    disabledForegroundColor: PetTheme.muted.withValues(
+                      alpha: 0.45,
+                    ),
+                    side: BorderSide(
+                      color: canSave
+                          ? const Color(0x80FFFFFF)
+                          : const Color(0x28FFFFFF),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
             ),

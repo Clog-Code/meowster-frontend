@@ -11,10 +11,14 @@ import 'package:amd_pet_frontend/ui/features/streak/pet_moment_streak_screen.dar
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Widget _buildTestApp(IsometricHomeViewModel viewModel) {
+Widget _buildTestApp(
+  IsometricHomeViewModel viewModel, {
+  AgentStreamClient? client,
+}) {
   return MaterialApp(
     home: IsometricHomePage(
       viewModel: viewModel,
+      client: client,
       streakClient: const EmptyPetStreakClient(),
       captureScreenBuilder: (context, _, _) =>
           const Scaffold(body: Center(child: Text('Camera destination'))),
@@ -24,7 +28,25 @@ Widget _buildTestApp(IsometricHomeViewModel viewModel) {
   );
 }
 
-PetRoomPetState _makePet(String id, String name, {String mood = 'Sleepy', Offset? position}) {
+Finder _formField(Key key) {
+  return find.descendant(
+    of: find.byKey(key),
+    matching: find.byType(TextFormField),
+  );
+}
+
+Future<void> _openAddPetDialog(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Add a new pet'));
+  await tester.pumpAndSettle();
+  expect(find.byKey(const Key('add-pet-dialog')), findsOneWidget);
+}
+
+PetRoomPetState _makePet(
+  String id,
+  String name, {
+  String mood = 'Sleepy',
+  Offset? position,
+}) {
   return PetRoomPetState(
     id: id,
     stats: PetStats(name: name, species: 'Cat', mood: mood),
@@ -112,7 +134,12 @@ void main() {
     final viewModel = IsometricHomeViewModel(
       initialPets: [
         _makePet('mochi', 'Mochi', position: const Offset(0.50, 0.74)),
-        _makePet('luna', 'Luna', mood: 'Curious', position: const Offset(0.66, 0.66)),
+        _makePet(
+          'luna',
+          'Luna',
+          mood: 'Curious',
+          position: const Offset(0.66, 0.66),
+        ),
       ],
     );
     addTearDown(viewModel.dispose);
@@ -190,6 +217,172 @@ void main() {
     expect(find.text('4 Streaks'), findsOneWidget);
   });
 
+  testWidgets('add pet form validates required and numeric fields', (
+    tester,
+  ) async {
+    final client = StaticAgentClient();
+    final viewModel = IsometricHomeViewModel(
+      initialPets: [_makePet('mochi', 'Mochi')],
+    );
+    addTearDown(viewModel.dispose);
+    await tester.pumpWidget(_buildTestApp(viewModel, client: client));
+    await _openAddPetDialog(tester);
+
+    await tester.tap(find.byKey(const Key('add-pet-submit-button')));
+    await tester.pump();
+    expect(find.text("Enter your pet's name"), findsOneWidget);
+
+    await tester.enterText(
+      _formField(const Key('add-pet-name-field')),
+      'Pepper',
+    );
+    await tester.tap(find.byKey(const Key('add-pet-species-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Other').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('add-pet-submit-button')));
+    await tester.pump();
+    expect(find.text('Tell us the species'), findsOneWidget);
+
+    await tester.enterText(
+      _formField(const Key('add-pet-custom-species-field')),
+      'Rabbit',
+    );
+    await tester.ensureVisible(find.byKey(const Key('add-pet-weight-field')));
+    await tester.enterText(_formField(const Key('add-pet-weight-field')), '-2');
+    await tester.tap(find.byKey(const Key('add-pet-submit-button')));
+    await tester.pump();
+    expect(find.text('Enter a valid weight'), findsOneWidget);
+    expect(client.createdProfiles, isEmpty);
+  });
+
+  testWidgets('add pet form returns a trimmed profile payload', (tester) async {
+    final client = StaticAgentClient();
+    final viewModel = IsometricHomeViewModel(
+      initialPets: [_makePet('mochi', 'Mochi')],
+    );
+    await tester.pumpWidget(_buildTestApp(viewModel, client: client));
+    await _openAddPetDialog(tester);
+
+    await tester.enterText(
+      _formField(const Key('add-pet-name-field')),
+      '  Pepper  ',
+    );
+    await tester.enterText(
+      _formField(const Key('add-pet-breed-field')),
+      '  Holland Lop  ',
+    );
+    await tester.ensureVisible(find.byKey(const Key('add-pet-species-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('add-pet-species-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Other').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      _formField(const Key('add-pet-custom-species-field')),
+      '  Rabbit  ',
+    );
+    await tester.ensureVisible(
+      find.byKey(const Key('add-pet-life-stage-field')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('add-pet-life-stage-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Adult').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      _formField(const Key('add-pet-weight-field')),
+      '2.4',
+    );
+
+    await tester.ensureVisible(find.byKey(const Key('add-pet-care-toggle')));
+    await tester.tap(find.byKey(const Key('add-pet-care-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('add-pet-conditions-field')), findsOneWidget);
+    await tester.enterText(
+      _formField(const Key('add-pet-conditions-field')),
+      '  None  ',
+    );
+
+    await tester.tap(find.byKey(const Key('add-pet-submit-button')));
+    await tester.pumpAndSettle();
+
+    expect(client.createdProfiles, hasLength(1));
+    final profile = client.createdProfiles.single;
+    expect(profile['name'], 'Pepper');
+    expect(profile['species'], 'Rabbit');
+    expect(profile['breed'], 'Holland Lop');
+    expect(profile['life_stage'], 'Adult');
+    expect(profile['weight_kg'], '2.4');
+    expect(profile['known_conditions'], 'None');
+
+    viewModel.dispose();
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('add pet agent callout opens guided chat', (tester) async {
+    final client = StaticAgentClient();
+    final viewModel = IsometricHomeViewModel(
+      initialPets: [_makePet('mochi', 'Mochi')],
+    );
+    addTearDown(viewModel.dispose);
+    await tester.pumpWidget(_buildTestApp(viewModel, client: client));
+    await _openAddPetDialog(tester);
+
+    await tester.ensureVisible(find.byKey(const Key('add-pet-chat-action')));
+    await tester.tap(find.byKey(const Key('add-pet-chat-action')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Chat destination'), findsOneWidget);
+  });
+
+  testWidgets('add pet dialog fits a compact viewport', (tester) async {
+    tester.view.physicalSize = const Size(390, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final client = StaticAgentClient();
+    final viewModel = IsometricHomeViewModel(
+      initialPets: [_makePet('mochi', 'Mochi')],
+    );
+    addTearDown(viewModel.dispose);
+    await tester.pumpWidget(_buildTestApp(viewModel, client: client));
+
+    await _openAddPetDialog(tester);
+    await tester.ensureVisible(find.byKey(const Key('add-pet-care-toggle')));
+    await tester.tap(find.byKey(const Key('add-pet-care-toggle')));
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('add pet dialog uses paired fields on a wide viewport', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final client = StaticAgentClient();
+    final viewModel = IsometricHomeViewModel(
+      initialPets: [_makePet('mochi', 'Mochi')],
+    );
+    addTearDown(viewModel.dispose);
+    await tester.pumpWidget(_buildTestApp(viewModel, client: client));
+
+    await _openAddPetDialog(tester);
+
+    final nameTop = tester.getTopLeft(
+      find.byKey(const Key('add-pet-name-field')),
+    );
+    final speciesTop = tester.getTopLeft(
+      find.byKey(const Key('add-pet-species-field')),
+    );
+    expect(nameTop.dy, speciesTop.dy);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('expanded layout remains overflow-free', (tester) async {
     tester.view.physicalSize = const Size(1200, 800);
     tester.view.devicePixelRatio = 1;
@@ -213,13 +406,11 @@ void main() {
 }
 
 class StaticAgentClient implements AgentStreamClient {
-  StaticAgentClient({
-    this.pets = const [],
-    this.petProfiles = const {},
-  });
+  StaticAgentClient({this.pets = const [], this.petProfiles = const {}});
 
   final List<Map<String, dynamic>> pets;
   final Map<String, Map<String, dynamic>> petProfiles;
+  final List<Map<String, String>> createdProfiles = [];
 
   @override
   Future<List<ChatThreadSummary>> fetchThreads({int limit = 50}) async => [];
@@ -236,7 +427,9 @@ class StaticAgentClient implements AgentStreamClient {
   }
 
   @override
-  Future<void> createPetProfile(Map<String, String> profile) async {}
+  Future<void> createPetProfile(Map<String, String> profile) async {
+    createdProfiles.add(Map.unmodifiable(profile));
+  }
 
   @override
   Future<UploadedMedia> uploadMedia(File file) async {
