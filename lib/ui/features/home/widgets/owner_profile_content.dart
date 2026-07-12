@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../../../domain/models/owner_profile.dart';
 import '../../../core/pet_theme.dart';
 
 class OwnerProfileContent extends StatefulWidget {
-  const OwnerProfileContent({super.key});
+  const OwnerProfileContent({this.onSaved, super.key});
+
+  final ValueChanged<OwnerProfile>? onSaved;
 
   @override
   State<OwnerProfileContent> createState() => _OwnerProfileContentState();
@@ -42,6 +45,9 @@ class _OwnerProfileContentState extends State<OwnerProfileContent> {
         _address = _addressCtrl.text;
         _editing = false;
       });
+      widget.onSaved?.call(
+        OwnerProfile(name: _name, phone: _phone, address: _address),
+      );
     } else {
       setState(() {
         _nameCtrl.text = _name;

@@ -13,6 +13,7 @@ import '../../../data/services/pet_streak_client.dart';
 import '../../../data/services/speech_to_text_service.dart';
 import '../../../data/services/text_to_speech_service.dart';
 import '../../../data/services/visual_llm_client.dart';
+import '../../../domain/models/owner_profile.dart';
 import '../../../domain/models/pet_capture_result.dart';
 import '../../core/pet_theme.dart';
 import 'chat_composer.dart';
@@ -22,6 +23,7 @@ class AgentChatScreen extends StatefulWidget {
     required this.client,
     this.initialCapture,
     this.initialThreadId,
+    this.ownerProfile,
     this.streakClient = const EmptyPetStreakClient(),
     this.visualLlmClient = const DisabledVisualLlmClient(),
     this.locationService = const GeolocatorLocationService(),
@@ -34,6 +36,7 @@ class AgentChatScreen extends StatefulWidget {
   final AgentStreamClient client;
   final PetCaptureResult? initialCapture;
   final String? initialThreadId;
+  final OwnerProfile? ownerProfile;
   final PetStreakClient streakClient;
   final VisualLlmClient visualLlmClient;
   final LocationService locationService;
@@ -233,6 +236,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
       threadId: _threadId,
       runId: _newId(),
       messages: _messages,
+      state: _buildAgentState(),
       context: _buildAgentContext(),
     );
     await _consume(path: '/agent', payload: payload);
@@ -283,9 +287,9 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
       setState(() {
         _isUploadingAttachment = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Photo upload failed: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Photo upload failed: $error')));
     }
   }
 
@@ -379,6 +383,11 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
           'value': jsonEncode(_sharedLocation!.toJson()),
         },
     ];
+  }
+
+  Map<String, dynamic> _buildAgentState() {
+    if (widget.ownerProfile == null) return const {};
+    return {'owner_profile': widget.ownerProfile!.toJson()};
   }
 
   String _friendlyError(Object error) {
@@ -2384,9 +2393,7 @@ class _ChatMenuDrawerState extends State<_ChatMenuDrawer> {
     }
     final preview = thread.lastMessage;
     if (preview != null && preview.trim().isNotEmpty) {
-      return preview.length > 60
-          ? '${preview.substring(0, 57)}...'
-          : preview;
+      return preview.length > 60 ? '${preview.substring(0, 57)}...' : preview;
     }
     final date = thread.createdAt;
     if (date.length >= 10) return date.substring(0, 10);

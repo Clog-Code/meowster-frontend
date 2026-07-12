@@ -324,7 +324,9 @@ class AgentApiClient implements AgentStreamClient {
       }
       final decoded = jsonDecode(response.body);
       if (decoded is! Map<String, dynamic>) {
-        throw const MediaUploadException('Upload response must be a JSON object');
+        throw const MediaUploadException(
+          'Upload response must be a JSON object',
+        );
       }
       return UploadedMedia.fromJson(decoded);
     } on MediaUploadException {
@@ -482,12 +484,13 @@ Map<String, dynamic> buildRunAgentInput({
   required String threadId,
   required String runId,
   required List<ChatMessage> messages,
+  Map<String, dynamic> state = const {},
   List<Map<String, dynamic>> context = const [],
 }) {
   return {
     'threadId': threadId,
     'runId': runId,
-    'state': <String, dynamic>{},
+    'state': state,
     'messages': messages
         .where(
           (message) =>

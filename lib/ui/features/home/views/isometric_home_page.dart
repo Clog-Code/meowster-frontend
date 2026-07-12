@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/pet_theme.dart';
 import '../../../../data/services/agent_stream_client.dart';
 import '../../../../data/services/pet_streak_client.dart';
+import '../../../../domain/models/owner_profile.dart';
 import '../../streak/pet_moment_streak_screen.dart';
 import '../models/pet_room_state.dart';
 import '../widgets/owner_profile_content.dart';
@@ -26,7 +27,7 @@ class IsometricHomePage extends StatefulWidget {
   });
 
   final WidgetBuilder captureScreenBuilder;
-  final WidgetBuilder chatScreenBuilder;
+  final Widget Function(BuildContext, OwnerProfile?) chatScreenBuilder;
   final IsometricHomeViewModel? viewModel;
   final AgentStreamClient? client;
   final PetStreakClient? streakClient;
@@ -39,6 +40,11 @@ class _IsometricHomePageState extends State<IsometricHomePage>
     with WidgetsBindingObserver {
   late final IsometricHomeViewModel _viewModel;
   late final bool _ownsViewModel;
+  OwnerProfile _ownerProfile = const OwnerProfile(
+    name: 'Dickson Lai',
+    phone: '+65 8xxx 9460',
+    address: '14000 Bukit Mertajam, Pulau Pinang',
+  );
 
   @override
   void initState() {
@@ -98,7 +104,7 @@ class _IsometricHomePageState extends State<IsometricHomePage>
     );
     if (!mounted) return;
     if (result == 'chat') {
-      _openDestination(widget.chatScreenBuilder);
+      _openDestination((ctx) => widget.chatScreenBuilder(ctx, _ownerProfile));
     } else if (result is Map<String, String>) {
       try {
         await widget.client!.createPetProfile(result);
@@ -115,9 +121,11 @@ class _IsometricHomePageState extends State<IsometricHomePage>
       builder: (_) => AlertDialog(
         backgroundColor: PetTheme.panel,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        content: const Padding(
-          padding: EdgeInsets.only(top: 8),
-          child: OwnerProfileContent(),
+        content: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: OwnerProfileContent(
+            onSaved: (profile) => setState(() => _ownerProfile = profile),
+          ),
         ),
       ),
     );
@@ -149,7 +157,7 @@ class _IsometricHomePageState extends State<IsometricHomePage>
                     _openDestination(widget.captureScreenBuilder),
                 onOpenStreaks: _openStreakScreen,
                 onOpenChat: () =>
-                    _openDestination(widget.chatScreenBuilder),
+                    _openDestination((ctx) => widget.chatScreenBuilder(ctx, _ownerProfile)),
                 onAddPet: _showAddPetModal,
                 onOpenProfile: _showProfileDialog,
                 streakCount: _viewModel.currentStreak,
