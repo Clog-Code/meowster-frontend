@@ -9,7 +9,6 @@ import '../ui/core/pet_theme.dart';
 import '../ui/features/capture/capture_screen.dart';
 import '../ui/features/chat/agent_chat_screen.dart';
 import '../ui/features/home/views/isometric_home_page.dart';
-import '../ui/features/streak/pet_moment_streak_screen.dart';
 
 class PetAgentApp extends StatelessWidget {
   const PetAgentApp({
@@ -39,6 +38,7 @@ class PetAgentApp extends StatelessWidget {
       theme: PetTheme.dark(),
       home: IsometricHomePage(
         client: client,
+        streakClient: streakClient,
         captureScreenBuilder: (context) => CaptureScreen(
           client: client,
           streakClient: streakClient,
@@ -48,8 +48,6 @@ class PetAgentApp extends StatelessWidget {
           autoReadPreferenceStore: autoReadPreferenceStore,
           enableCamera: enableCamera,
         ),
-        streakScreenBuilder: (context) =>
-            PetMomentStreakScreen(streakClient: streakClient),
         chatScreenBuilder: (context) => AgentChatScreen(
           client: client,
           streakClient: streakClient,

@@ -1,5 +1,7 @@
+import 'package:amd_pet_frontend/data/services/pet_streak_client.dart';
 import 'package:amd_pet_frontend/ui/features/home/view_models/isometric_home_view_model.dart';
 import 'package:amd_pet_frontend/ui/features/home/views/isometric_home_page.dart';
+import 'package:amd_pet_frontend/ui/features/streak/pet_moment_streak_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -7,10 +9,9 @@ Widget _buildTestApp(IsometricHomeViewModel viewModel) {
   return MaterialApp(
     home: IsometricHomePage(
       viewModel: viewModel,
+      streakClient: const EmptyPetStreakClient(),
       captureScreenBuilder: (context) =>
           const Scaffold(body: Center(child: Text('Camera destination'))),
-      streakScreenBuilder: (context) =>
-          const Scaffold(body: Center(child: Text('Streak destination'))),
       chatScreenBuilder: (context) =>
           const Scaffold(body: Center(child: Text('Chat destination'))),
     ),
@@ -106,10 +107,10 @@ void main() {
     await tester.pumpWidget(_buildTestApp(viewModel));
 
     await tester.tap(find.byTooltip('Open pet moment streak calendar'));
-    await tester.pumpAndSettle();
-    expect(find.text('Streak destination'), findsOneWidget);
-    Navigator.of(tester.element(find.text('Streak destination'))).pop();
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(PetMomentStreakScreen), findsOneWidget);
+    Navigator.of(tester.element(find.byType(PetMomentStreakScreen))).pop();
+    await tester.pump();
 
     await tester.tap(find.byKey(const Key('pet-mochi-sprite')));
     await tester.pump();

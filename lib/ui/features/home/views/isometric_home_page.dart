@@ -7,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/pet_theme.dart';
 import '../../../../data/services/agent_stream_client.dart';
+import '../../../../data/services/pet_streak_client.dart';
+import '../../streak/pet_moment_streak_screen.dart';
 import '../models/pet_room_state.dart';
 import '../view_models/isometric_home_view_model.dart';
 
@@ -15,18 +17,18 @@ const double _expandedLayoutMinWidth = 600;
 class IsometricHomePage extends StatefulWidget {
   const IsometricHomePage({
     required this.captureScreenBuilder,
-    required this.streakScreenBuilder,
     required this.chatScreenBuilder,
     this.viewModel,
     this.client,
+    this.streakClient,
     super.key,
   });
 
   final WidgetBuilder captureScreenBuilder;
-  final WidgetBuilder streakScreenBuilder;
   final WidgetBuilder chatScreenBuilder;
   final IsometricHomeViewModel? viewModel;
   final AgentStreamClient? client;
+  final PetStreakClient? streakClient;
 
   @override
   State<IsometricHomePage> createState() => _IsometricHomePageState();
@@ -64,6 +66,18 @@ class _IsometricHomePageState extends State<IsometricHomePage>
     _viewModel.pauseStandby();
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: builder));
     if (mounted) _viewModel.resumeStandby();
+  }
+
+  Future<void> _openStreakScreen() async {
+    final petId = _viewModel.state.selectedPetId ??
+        _viewModel.state.pets.firstOrNull?.id ??
+        'pet-01';
+    await _openDestination(
+      (_) => PetMomentStreakScreen(
+        streakClient: widget.streakClient!,
+        petId: petId,
+      ),
+    );
   }
 
   Future<void> _showAddPetModal() async {
@@ -111,8 +125,7 @@ class _IsometricHomePageState extends State<IsometricHomePage>
                 onPetTap: _viewModel.togglePetStats,
                 onOpenCamera: () =>
                     _openDestination(widget.captureScreenBuilder),
-                onOpenStreaks: () =>
-                    _openDestination(widget.streakScreenBuilder),
+                onOpenStreaks: _openStreakScreen,
                 onOpenChat: () => _openDestination(widget.chatScreenBuilder),
                 onAddPet: _showAddPetModal,
               );
