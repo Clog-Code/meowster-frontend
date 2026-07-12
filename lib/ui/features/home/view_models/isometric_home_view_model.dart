@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../../data/services/agent_stream_client.dart';
 import '../../../../data/services/pet_streak_client.dart';
+import '../../../../domain/models/pet_streak_summary.dart';
 import '../models/pet_room_state.dart';
 
 typedef DeviceClock = DateTime Function();
@@ -145,6 +146,11 @@ Offset clampPetPosition(Offset position) {
   );
 }
 
+String _capitalize(String text) {
+  if (text.isEmpty) return text;
+  return '${text[0].toUpperCase()}${text.substring(1)}';
+}
+
 class IsometricHomeViewModel extends ChangeNotifier {
   IsometricHomeViewModel({
     DeviceClock clock = DateTime.now,
@@ -192,7 +198,7 @@ class IsometricHomeViewModel extends ChangeNotifier {
           stats: PetStats(
             name: p['name']?.toString() ?? 'Pet ${i + 1}',
             species: p['species']?.toString() ?? '',
-            emotion: 'Sleepy',
+            mood: 'Sleepy',
           ),
           activeAction: standbyActionById(PetStandbyActionId.sleepAndWake),
           normalizedPosition: position,
@@ -224,6 +230,26 @@ class IsometricHomeViewModel extends ChangeNotifier {
     try {
       final summary = await c.fetchStreakSummary(petId: petId);
       currentStreak = summary.currentStreak;
+
+      final petIndex = _state.pets.indexWhere((pet) => pet.id == petId);
+      if (petIndex != -1) {
+        final pet = _state.pets[petIndex];
+        final days = List<PetStreakDay>.from(summary.days)
+          ..sort((a, b) => b.date.compareTo(a.date));
+        final capturedDays = days.where((day) => day.hasCapture).toList();
+        String mood = pet.stats.mood;
+        if (capturedDays.isNotEmpty) {
+          mood = _capitalize(capturedDays.first.dominantEmotion ?? 'Unknown');
+        } else {
+          mood = 'Unknown';
+        }
+
+        final stats = pet.stats.copyWith(mood: mood);
+        final pets = List<PetRoomPetState>.of(_state.pets);
+        pets[petIndex] = pet.copyWith(stats: stats);
+        _state = _state.copyWith(pets: List.unmodifiable(pets));
+      }
+
       notifyListeners();
     } on AgentConnectionException {
       // Streak backend unavailable.
@@ -240,9 +266,29 @@ class IsometricHomeViewModel extends ChangeNotifier {
       if (petIndex == -1) return;
 
       final pet = _state.pets[petIndex];
+
+      String mood = pet.stats.mood;
+      final sc = streakClient;
+      if (sc != null) {
+        try {
+          final summary = await sc.fetchStreakSummary(petId: petId);
+          final days = List<PetStreakDay>.from(summary.days)
+            ..sort((a, b) => b.date.compareTo(a.date));
+          final capturedDays = days.where((day) => day.hasCapture).toList();
+          if (capturedDays.isNotEmpty) {
+            mood = _capitalize(capturedDays.first.dominantEmotion ?? 'Unknown');
+          } else {
+            mood = 'Unknown';
+          }
+        } catch (_) {
+          // ignore, keep current
+        }
+      }
+
       final stats = pet.stats.copyWith(
         name: profile['name']?.toString() ?? pet.stats.name,
         species: profile['species']?.toString() ?? pet.stats.species,
+        mood: mood,
         breed: profile['breed']?.toString(),
         weightKg: profile['weight_kg'] != null
             ? (profile['weight_kg'] as num).toDouble()
@@ -291,13 +337,16 @@ class IsometricHomeViewModel extends ChangeNotifier {
 
   bool _isWelcomeMode = false;
   bool get isWelcomeMode => _isWelcomeMode;
+  Timer? _welcomeTimer;
 
   void triggerWelcome() {
+    _welcomeTimer?.cancel();
     _isWelcomeMode = true;
     notifyListeners();
     
-    Future.delayed(const Duration(seconds: 4), () {
+    _welcomeTimer = Timer(const Duration(seconds: 4), () {
       _isWelcomeMode = false;
+      _welcomeTimer = null;
       notifyListeners();
     });
   }
@@ -326,6 +375,8 @@ class IsometricHomeViewModel extends ChangeNotifier {
       timer.cancel();
     }
     _standbyTimers.clear();
+    _welcomeTimer?.cancel();
+    _welcomeTimer = null;
   }
 
   void resumeStandby() {
