@@ -26,7 +26,7 @@ class IsometricHomePage extends StatefulWidget {
     super.key,
   });
 
-  final WidgetBuilder captureScreenBuilder;
+  final Widget Function(BuildContext, String, String) captureScreenBuilder;
   final Widget Function(BuildContext, OwnerProfile?) chatScreenBuilder;
   final IsometricHomeViewModel? viewModel;
   final AgentStreamClient? client;
@@ -79,14 +79,10 @@ class _IsometricHomePageState extends State<IsometricHomePage>
   }
 
   Future<void> _openStreakScreen() async {
-    final petId = _viewModel.state.selectedPetId ??
-        _viewModel.state.pets.firstOrNull?.id ??
-        'pet-01';
-    final pet = _viewModel.state.pets.firstWhere(
-      (p) => p.id == petId,
-      orElse: () => _viewModel.state.pets.first,
-    );
-    final petName = pet.stats.name;
+    final selectedPet = _viewModel.state.selectedPet ??
+        _viewModel.state.pets.firstOrNull;
+    final petId = selectedPet?.id ?? 'pet-01';
+    final petName = selectedPet?.stats.name ?? 'Pet';
     await _openDestination(
       (_) => PetMomentStreakScreen(
         streakClient: widget.streakClient!,
@@ -153,8 +149,19 @@ class _IsometricHomePageState extends State<IsometricHomePage>
                 constraints: constraints,
                 onPetTap: _viewModel.togglePetStats,
                 onTapBlank: _viewModel.clearSelection,
-                onOpenCamera: () =>
-                    _openDestination(widget.captureScreenBuilder),
+                onOpenCamera: () {
+                  final selectedPet = _viewModel.state.selectedPet ??
+                      _viewModel.state.pets.firstOrNull;
+                  final petId = selectedPet?.id ?? 'pet-01';
+                  final petName = selectedPet?.stats.name ?? 'Pet';
+                  _openDestination(
+                    (context) => widget.captureScreenBuilder(
+                      context,
+                      petId,
+                      petName,
+                    ),
+                  );
+                },
                 onOpenStreaks: _openStreakScreen,
                 onOpenChat: () =>
                     _openDestination((ctx) => widget.chatScreenBuilder(ctx, _ownerProfile)),

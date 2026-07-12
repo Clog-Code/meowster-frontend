@@ -39,7 +39,7 @@ class PetAgentApp extends StatelessWidget {
       home: IsometricHomePage(
         client: client,
         streakClient: streakClient,
-        captureScreenBuilder: (context) => CaptureScreen(
+        captureScreenBuilder: (context, petId, petName) => CaptureScreen(
           client: client,
           streakClient: streakClient,
           visualLlmClient: visualLlmClient,
@@ -47,6 +47,8 @@ class PetAgentApp extends StatelessWidget {
           textToSpeechService: textToSpeechService,
           autoReadPreferenceStore: autoReadPreferenceStore,
           enableCamera: enableCamera,
+          petId: petId,
+          petName: petName,
         ),
         chatScreenBuilder: (context, ownerProfile) => AgentChatScreen(
           client: client,

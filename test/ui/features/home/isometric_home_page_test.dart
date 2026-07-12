@@ -16,7 +16,7 @@ Widget _buildTestApp(IsometricHomeViewModel viewModel) {
     home: IsometricHomePage(
       viewModel: viewModel,
       streakClient: const EmptyPetStreakClient(),
-      captureScreenBuilder: (context) =>
+      captureScreenBuilder: (context, _, _) =>
           const Scaffold(body: Center(child: Text('Camera destination'))),
       chatScreenBuilder: (context, _) =>
           const Scaffold(body: Center(child: Text('Chat destination'))),

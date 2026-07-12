@@ -26,6 +26,8 @@ class CaptureScreen extends StatefulWidget {
   const CaptureScreen({
     required this.client,
     required this.streakClient,
+    required this.petId,
+    required this.petName,
     this.visualLlmClient = const DisabledVisualLlmClient(),
     this.petBoxDetector,
     this.textToSpeechService,
@@ -37,6 +39,8 @@ class CaptureScreen extends StatefulWidget {
 
   final AgentStreamClient client;
   final PetStreakClient streakClient;
+  final String petId;
+  final String petName;
   final VisualLlmClient visualLlmClient;
   final PetBoxDetector? petBoxDetector;
   final TextToSpeechService? textToSpeechService;
@@ -453,7 +457,7 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 
   Future<PetStreakSummary> _loadStreak() {
-    return widget.streakClient.fetchStreakSummary();
+    return widget.streakClient.fetchStreakSummary(petId: widget.petId);
   }
 
   void _refreshStreak() {
@@ -918,7 +922,11 @@ class _CaptureScreenState extends State<CaptureScreen>
         .push(
           MaterialPageRoute<void>(
             builder: (context) =>
-                PetMomentStreakScreen(streakClient: widget.streakClient),
+                PetMomentStreakScreen(
+                  streakClient: widget.streakClient,
+                  petId: widget.petId,
+                  petName: widget.petName,
+                ),
           ),
         )
         .then((_) => _refreshStreak());
