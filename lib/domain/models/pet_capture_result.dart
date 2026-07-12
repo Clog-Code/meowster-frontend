@@ -14,6 +14,7 @@ class PetCaptureResult {
     this.emotionProbabilities,
     this.trackingSamples = const [],
     this.path,
+    this.uploadedImagePath,
   });
 
   final CaptureMediaKind kind;
@@ -26,6 +27,13 @@ class PetCaptureResult {
   final Map<String, double>? emotionProbabilities;
   final List<PetTrackingSample> trackingSamples;
   final String? path;
+
+  /// Server-side absolute path returned by the agentic backend's
+  /// `POST /upload`, when this capture was also uploaded there. Threaded
+  /// into the perception payload's `notes` so the orchestrator can pass it
+  /// on to a subagent's `visual_search` tool (breed/condition ID via Google
+  /// Lens) — independent of the on-device ML emotion model above.
+  final String? uploadedImagePath;
 
   String get attachmentLabel {
     final labels = [species, emotion, ...healthFlags].join(' / ');
@@ -67,9 +75,16 @@ class PetCaptureResult {
       'health_flags': healthFlags,
       'thread_id': threadId,
       'timestamp': DateTime.now().toIso8601String(),
-      'notes': emotionConfidence == null
-          ? 'Frontend MVP simulated perception from ${kind.name} capture.'
-          : 'Frontend MVP visual LLM perception from ${kind.name} capture.',
+      'notes': [
+        emotionConfidence == null
+            ? 'Frontend MVP simulated perception from ${kind.name} capture.'
+            : 'Frontend MVP visual LLM perception from ${kind.name} capture.',
+        // Picked up by the orchestrator's delegation rules (see
+        // initializer_prompt.md: "pass an image URL or path when one is
+        // available") to trigger the visual_search tool in a subagent.
+        if (uploadedImagePath != null)
+          'attached_image_path: $uploadedImagePath',
+      ].join(' '),
     };
   }
 }

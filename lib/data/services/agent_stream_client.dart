@@ -1,7 +1,40 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:http/http.dart' as http;
+
 import '../../domain/models/pet_capture_result.dart';
+
+/// Result of uploading a media file to the agentic backend's `/upload`
+/// endpoint. `path` is the server-side absolute disk path — this is what
+/// the backend's `visual_search` tool expects as `image_path` (it publishes
+/// the file to a temporary public host itself before calling Google Lens),
+/// so callers should thread `path`, not `url`, into anything that needs to
+/// trigger a visual search.
+class UploadedMedia {
+  const UploadedMedia({required this.url, required this.path, this.filename});
+
+  final String url;
+  final String path;
+  final String? filename;
+
+  factory UploadedMedia.fromJson(Map<String, dynamic> json) {
+    return UploadedMedia(
+      url: json['url']?.toString() ?? '',
+      path: json['path']?.toString() ?? '',
+      filename: json['filename']?.toString(),
+    );
+  }
+}
+
+class MediaUploadException implements Exception {
+  const MediaUploadException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
 
 enum ChatRole { user, assistant, system }
 
@@ -140,6 +173,11 @@ abstract class AgentStreamClient {
     required Map<String, dynamic> payload,
     required void Function(AgentStreamEvent event) onEvent,
   });
+
+  /// Uploads a photo/video to the agentic backend's `POST /upload` so it
+  /// can be referenced (by server-side path) from a chat/perception message
+  /// — this is what lets a subagent's `visual_search` tool pick it up.
+  Future<UploadedMedia> uploadMedia(File file);
 }
 
 class AgentApiClient implements AgentStreamClient {
@@ -208,6 +246,36 @@ class AgentApiClient implements AgentStreamClient {
       throw AgentConnectionException('Could not connect to $uri: $error');
     } finally {
       client.close();
+    }
+  }
+
+  @override
+  Future<UploadedMedia> uploadMedia(File file) async {
+    final uri = baseUri.resolve('/upload');
+    try {
+      final request = http.MultipartRequest('POST', uri)
+        ..files.add(await http.MultipartFile.fromPath('file', file.path));
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final detail = response.body.trim().isEmpty
+            ? ''
+            : ': ${response.body.trim()}';
+        throw MediaUploadException(
+          'Upload failed (${response.statusCode}) at $uri$detail',
+        );
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw const MediaUploadException('Upload response must be a JSON object');
+      }
+      return UploadedMedia.fromJson(decoded);
+    } on MediaUploadException {
+      rethrow;
+    } on SocketException catch (error) {
+      throw MediaUploadException('Could not connect to $uri: $error');
+    } on Object catch (error) {
+      throw MediaUploadException('Upload failed at $uri: $error');
     }
   }
 }
