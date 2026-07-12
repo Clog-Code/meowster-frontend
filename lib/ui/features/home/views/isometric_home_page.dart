@@ -559,7 +559,7 @@ class _PetStatCardState extends State<_PetStatCard> {
                   value: widget.stats.breed ?? widget.stats.species,
                 ),
                 const SizedBox(height: 8),
-                _StatRow(label: 'Emotion', value: widget.stats.emotion),
+                _StatRow(label: 'Mood', value: widget.stats.mood),
                 if (_extraStats.isNotEmpty) ...[
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),

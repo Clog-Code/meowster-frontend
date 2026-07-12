@@ -368,6 +368,7 @@ class _CaptureScreenState extends State<CaptureScreen>
             sourceLabel: sourceLabel,
             path: image.path,
             uploadedImagePath: uploadedImagePath,
+            petId: widget.petId,
           ),
         );
       } on Object catch (error) {
@@ -389,6 +390,7 @@ class _CaptureScreenState extends State<CaptureScreen>
             sourceLabel: sourceLabel,
             path: image.path,
             uploadedImagePath: uploadedImagePath,
+            petId: widget.petId,
           ),
         );
       }
@@ -418,6 +420,7 @@ class _CaptureScreenState extends State<CaptureScreen>
           healthFlags: const [],
           sourceLabel: sourceLabel,
           path: video.path,
+          petId: widget.petId,
         ),
       );
     } on Object catch (error) {
@@ -437,6 +440,7 @@ class _CaptureScreenState extends State<CaptureScreen>
           healthFlags: const ['needs review'],
           sourceLabel: sourceLabel,
           path: video.path,
+          petId: widget.petId,
         ),
       );
     } finally {
@@ -515,13 +519,13 @@ class _CaptureScreenState extends State<CaptureScreen>
   void _setDemoPreview() {
     unawaited(
       _setPreview(
-        const PetCaptureResult(
+        PetCaptureResult(
           kind: CaptureMediaKind.demo,
           species: 'cat',
           emotion: 'distress',
           healthFlags: ['limping', 'low appetite'],
           sourceLabel: 'Demo capture',
-          petId: 'pet-02',
+          petId: widget.petId,
         ),
       ),
     );
@@ -551,7 +555,12 @@ class _CaptureScreenState extends State<CaptureScreen>
           isVideo: preview.kind == CaptureMediaKind.video,
         );
       }
-      await _recordPetMoment(preview);
+      String? uploadedImagePath = preview.uploadedImagePath;
+      if (uploadedImagePath == null && preview.path != null) {
+        uploadedImagePath = await _uploadForVisualSearch(File(preview.path!));
+      }
+      final updatedPreview = preview.copyWith(uploadedImagePath: uploadedImagePath);
+      await _recordPetMoment(updatedPreview);
       if (!mounted) return;
       setState(() => _momentSaved = true);
       await _playTransition(CaptureTransitionTarget.save);

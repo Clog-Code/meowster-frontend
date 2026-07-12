@@ -29,7 +29,7 @@ class PetStats {
   const PetStats({
     required this.name,
     required this.species,
-    required this.emotion,
+    required this.mood,
     this.breed,
     this.weightKg,
     this.lifeStage,
@@ -41,7 +41,7 @@ class PetStats {
 
   final String name;
   final String species;
-  final String emotion;
+  final String mood;
   final String? breed;
   final double? weightKg;
   final String? lifeStage;
@@ -53,7 +53,7 @@ class PetStats {
   PetStats copyWith({
     String? name,
     String? species,
-    String? emotion,
+    String? mood,
     String? breed,
     double? weightKg,
     String? lifeStage,
@@ -65,7 +65,7 @@ class PetStats {
     return PetStats(
       name: name ?? this.name,
       species: species ?? this.species,
-      emotion: emotion ?? this.emotion,
+      mood: mood ?? this.mood,
       breed: breed ?? this.breed,
       weightKg: weightKg ?? this.weightKg,
       lifeStage: lifeStage ?? this.lifeStage,

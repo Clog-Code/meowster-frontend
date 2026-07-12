@@ -4,6 +4,7 @@ class PetStreakDay {
     required this.captureCount,
     this.dominantEmotion,
     this.species,
+    this.imagePath,
   });
 
   factory PetStreakDay.fromJson(Map<String, dynamic> json) {
@@ -12,6 +13,7 @@ class PetStreakDay {
       captureCount: _readInt(json['capture_count'] ?? json['captureCount']),
       dominantEmotion: json['dominant_emotion']?.toString(),
       species: json['species']?.toString(),
+      imagePath: json['image_path']?.toString() ?? json['imagePath']?.toString(),
     );
   }
 
@@ -19,6 +21,7 @@ class PetStreakDay {
   final int captureCount;
   final String? dominantEmotion;
   final String? species;
+  final String? imagePath;
 
   bool get hasCapture => captureCount > 0;
 
