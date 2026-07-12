@@ -10,6 +10,7 @@ import '../../../../data/services/agent_stream_client.dart';
 import '../../../../data/services/pet_streak_client.dart';
 import '../../streak/pet_moment_streak_screen.dart';
 import '../models/pet_room_state.dart';
+import '../widgets/owner_profile_content.dart';
 import '../view_models/isometric_home_view_model.dart';
 
 const double _expandedLayoutMinWidth = 600;
@@ -75,10 +76,16 @@ class _IsometricHomePageState extends State<IsometricHomePage>
     final petId = _viewModel.state.selectedPetId ??
         _viewModel.state.pets.firstOrNull?.id ??
         'pet-01';
+    final pet = _viewModel.state.pets.firstWhere(
+      (p) => p.id == petId,
+      orElse: () => _viewModel.state.pets.first,
+    );
+    final petName = pet.stats.name;
     await _openDestination(
       (_) => PetMomentStreakScreen(
         streakClient: widget.streakClient!,
         petId: petId,
+        petName: petName,
       ),
     );
   }
@@ -103,6 +110,20 @@ class _IsometricHomePageState extends State<IsometricHomePage>
         }
       }
     }
+  }
+
+  Future<void> _showProfileDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: PetTheme.panel,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        content: const Padding(
+          padding: EdgeInsets.only(top: 8),
+          child: OwnerProfileContent(),
+        ),
+      ),
+    );
   }
 
   @override
@@ -133,6 +154,7 @@ class _IsometricHomePageState extends State<IsometricHomePage>
                 onOpenChat: () =>
                     _openDestination(widget.chatScreenBuilder),
                 onAddPet: _showAddPetModal,
+                onOpenProfile: _showProfileDialog,
                 streakCount: _viewModel.currentStreak,
               );
             },
@@ -153,6 +175,7 @@ class _PetRoomScene extends StatelessWidget {
     required this.onOpenStreaks,
     required this.onOpenChat,
     required this.onAddPet,
+    required this.onOpenProfile,
     this.streakCount = 0,
   });
 
@@ -164,6 +187,7 @@ class _PetRoomScene extends StatelessWidget {
   final VoidCallback onOpenStreaks;
   final VoidCallback onOpenChat;
   final VoidCallback onAddPet;
+  final VoidCallback onOpenProfile;
   final int? streakCount;
 
   @override
@@ -263,6 +287,18 @@ class _PetRoomScene extends StatelessWidget {
                   child: IconButton(
                     onPressed: onAddPet,
                     icon: const Icon(Icons.add),
+                    color: Colors.white,
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      overlayColor: Colors.white24,
+                    ),
+                  ),
+                ),
+                Tooltip(
+                  message: 'Show owner profile',
+                  child: IconButton(
+                    onPressed: onOpenProfile,
+                    icon: const Icon(Icons.person_outline),
                     color: Colors.white,
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.transparent,
@@ -1130,3 +1166,5 @@ class _GlassCommandButton extends StatelessWidget {
     );
   }
 }
+
+

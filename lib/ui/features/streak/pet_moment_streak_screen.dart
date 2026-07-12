@@ -56,11 +56,13 @@ class PetMomentStreakScreen extends StatefulWidget {
   const PetMomentStreakScreen({
     required this.streakClient,
     this.petId = 'pet-01',
+    this.petName = 'Pet',
     super.key,
   });
 
   final PetStreakClient streakClient;
   final String petId;
+  final String petName;
 
   @override
   State<PetMomentStreakScreen> createState() => _PetMomentStreakScreenState();
@@ -100,11 +102,11 @@ class _PetMomentStreakScreenState extends State<PetMomentStreakScreen> {
             }
 
             if (snapshot.hasError) {
-              return _StreakErrorState(onRetry: _retry);
+              return _StreakErrorState(onRetry: _retry, petName: widget.petName);
             }
 
             final summary = snapshot.data ?? PetStreakSummary.empty();
-            return _StreakContent(summary: summary);
+            return _StreakContent(summary: summary, petName: widget.petName);
           },
         ),
       ),
@@ -113,9 +115,10 @@ class _PetMomentStreakScreenState extends State<PetMomentStreakScreen> {
 }
 
 class _StreakContent extends StatefulWidget {
-  const _StreakContent({required this.summary});
+  const _StreakContent({required this.summary, required this.petName});
 
   final PetStreakSummary summary;
+  final String petName;
 
   @override
   State<_StreakContent> createState() => _StreakContentState();
@@ -152,9 +155,7 @@ class _StreakContentState extends State<_StreakContent> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
       children: [
-        const _UserProfileCard(),
-        const SizedBox(height: 18),
-        _HeroStreak(summary: summary),
+        _HeroStreak(summary: summary, petName: widget.petName),
         const SizedBox(height: 18),
         Row(
           children: [
@@ -203,82 +204,13 @@ class _StreakContentState extends State<_StreakContent> {
   }
 }
 
-class _UserProfileCard extends StatelessWidget {
-  const _UserProfileCard();
 
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: PetTheme.panel,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0x24FFFFFF)),
-      ),
-      child: const Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Profile', style: TextStyle(fontWeight: FontWeight.w800)),
-            SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _ProfileDetail(
-                    icon: Icons.person_outline,
-                    value: 'Dickson Lai',
-                  ),
-                ),
-                SizedBox(width: 20),
-                Expanded(
-                  child: _ProfileDetail(
-                    icon: Icons.phone_outlined,
-                    value: '+65 8xxx 9460',
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 8),
-            _ProfileDetail(
-              icon: Icons.location_on_outlined,
-              value: '14000 Bukit Mertajam, Pulau Pinang',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileDetail extends StatelessWidget {
-  const _ProfileDetail({required this.icon, required this.value});
-
-  final IconData icon;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: PetTheme.aqua),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: PetTheme.muted),
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _HeroStreak extends StatelessWidget {
-  const _HeroStreak({required this.summary});
+  const _HeroStreak({required this.summary, required this.petName});
 
   final PetStreakSummary summary;
+  final String petName;
 
   @override
   Widget build(BuildContext context) {
@@ -312,7 +244,7 @@ class _HeroStreak extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${summary.currentStreak} day streak',
+                    '$petName has ${summary.currentStreak} day streak${summary.currentStreak >= 1 ? 's' : ''}.',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
@@ -1152,9 +1084,10 @@ class _EmptyCalendarHint extends StatelessWidget {
 }
 
 class _StreakErrorState extends StatelessWidget {
-  const _StreakErrorState({required this.onRetry});
+  const _StreakErrorState({required this.onRetry, required this.petName});
 
   final VoidCallback onRetry;
+  final String petName;
 
   @override
   Widget build(BuildContext context) {
@@ -1162,7 +1095,7 @@ class _StreakErrorState extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
       children: [
-        _HeroStreak(summary: fallback),
+        _HeroStreak(summary: fallback, petName: petName),
         const SizedBox(height: 18),
         DecoratedBox(
           decoration: BoxDecoration(
