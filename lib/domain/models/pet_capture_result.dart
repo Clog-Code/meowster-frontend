@@ -17,6 +17,34 @@ class PetCaptureResult {
     this.uploadedImagePath,
   });
 
+  PetCaptureResult copyWith({
+    CaptureMediaKind? kind,
+    String? species,
+    String? emotion,
+    List<String>? healthFlags,
+    String? sourceLabel,
+    String? petId,
+    double? emotionConfidence,
+    Map<String, double>? emotionProbabilities,
+    List<PetTrackingSample>? trackingSamples,
+    String? path,
+    String? uploadedImagePath,
+  }) {
+    return PetCaptureResult(
+      kind: kind ?? this.kind,
+      species: species ?? this.species,
+      emotion: emotion ?? this.emotion,
+      healthFlags: healthFlags ?? this.healthFlags,
+      sourceLabel: sourceLabel ?? this.sourceLabel,
+      petId: petId ?? this.petId,
+      emotionConfidence: emotionConfidence ?? this.emotionConfidence,
+      emotionProbabilities: emotionProbabilities ?? this.emotionProbabilities,
+      trackingSamples: trackingSamples ?? this.trackingSamples,
+      path: path ?? this.path,
+      uploadedImagePath: uploadedImagePath ?? this.uploadedImagePath,
+    );
+  }
+
   final CaptureMediaKind kind;
   final String species;
   final String emotion;
@@ -75,6 +103,7 @@ class PetCaptureResult {
       'health_flags': healthFlags,
       'thread_id': threadId,
       'timestamp': DateTime.now().toIso8601String(),
+      'image_path': uploadedImagePath,
       'notes': [
         emotionConfidence == null
             ? 'Frontend MVP simulated perception from ${kind.name} capture.'

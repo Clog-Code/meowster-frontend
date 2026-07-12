@@ -599,7 +599,12 @@ class _CaptureScreenState extends State<CaptureScreen>
           isVideo: preview.kind == CaptureMediaKind.video,
         );
       }
-      await _recordPetMoment(preview);
+      String? uploadedImagePath = preview.uploadedImagePath;
+      if (uploadedImagePath == null && preview.path != null) {
+        uploadedImagePath = await _uploadForVisualSearch(File(preview.path!));
+      }
+      final updatedPreview = preview.copyWith(uploadedImagePath: uploadedImagePath);
+      await _recordPetMoment(updatedPreview);
       if (!mounted) return;
       setState(() => _momentSaved = true);
       await _playTransition(CaptureTransitionTarget.save);

@@ -112,7 +112,11 @@ class _PetMomentStreakScreenState extends State<PetMomentStreakScreen> {
             }
 
             final summary = snapshot.data ?? PetStreakSummary.empty();
-            return _StreakContent(summary: summary, petName: widget.petName);
+            return _StreakContent(
+              summary: summary,
+              petName: widget.petName,
+              streakClient: widget.streakClient,
+            );
           },
         ),
       ),
@@ -121,10 +125,15 @@ class _PetMomentStreakScreenState extends State<PetMomentStreakScreen> {
 }
 
 class _StreakContent extends StatefulWidget {
-  const _StreakContent({required this.summary, required this.petName});
+  const _StreakContent({
+    required this.summary,
+    required this.petName,
+    required this.streakClient,
+  });
 
   final PetStreakSummary summary;
   final String petName;
+  final PetStreakClient streakClient;
 
   @override
   State<_StreakContent> createState() => _StreakContentState();
@@ -204,7 +213,11 @@ class _StreakContentState extends State<_StreakContent> {
           onNext: () => _moveMonth(1),
         ),
         const SizedBox(height: 24),
-        _MomentReel(summary: summary, monthStart: _visibleMonth),
+        _MomentReel(
+          summary: summary,
+          monthStart: _visibleMonth,
+          streakClient: widget.streakClient,
+        ),
       ],
     );
   }
@@ -800,10 +813,15 @@ class _CalendarDayCell extends StatelessWidget {
 }
 
 class _MomentReel extends StatelessWidget {
-  const _MomentReel({required this.summary, required this.monthStart});
+  const _MomentReel({
+    required this.summary,
+    required this.monthStart,
+    required this.streakClient,
+  });
 
   final PetStreakSummary summary;
   final DateTime monthStart;
+  final PetStreakClient streakClient;
 
   @override
   Widget build(BuildContext context) {
@@ -839,6 +857,7 @@ class _MomentReel extends StatelessWidget {
                 return _MomentPreviewCard(
                   day: day,
                   onTap: () => _showMomentPreview(context, day),
+                  streakClient: streakClient,
                 );
               },
               separatorBuilder: (context, index) => const SizedBox(width: 10),
@@ -857,15 +876,61 @@ class _MomentReel extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
       ),
-      builder: (context) => _MomentPreviewSheet(day: day),
+      builder: (context) => _MomentPreviewSheet(day: day, streakClient: streakClient),
     );
   }
 }
 
+Widget buildStreakDayMediaWidget({
+  required String path,
+  required PetStreakClient? streakClient,
+  double? width,
+  double? height,
+  BoxFit fit = BoxFit.cover,
+}) {
+  final file = File(path);
+  if (file.existsSync()) {
+    return Image.file(
+      file,
+      width: width,
+      height: height,
+      fit: fit,
+    );
+  }
+  String url;
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    url = path;
+  } else {
+    final baseUri = (streakClient is AgentPetStreakClient)
+        ? streakClient.baseUri
+        : Uri.parse('http://localhost:8000');
+    final separator = path.contains('/') ? '/' : '\\';
+    final filename = path.split(separator).last;
+    url = baseUri.resolve('/uploads/$filename').toString();
+  }
+  return Image.network(
+    url,
+    width: width,
+    height: height,
+    fit: fit,
+    errorBuilder: (context, error, stackTrace) {
+      return Container(
+        color: PetTheme.panelSoft,
+        width: width,
+        height: height,
+        child: const Center(
+          child: Icon(Icons.broken_image, color: Colors.white24, size: 20),
+        ),
+      );
+    },
+  );
+}
+
 class _VideoFramePreview extends StatefulWidget {
-  const _VideoFramePreview({required this.videoPath});
+  const _VideoFramePreview({required this.videoPath, this.streakClient});
 
   final String videoPath;
+  final PetStreakClient? streakClient;
 
   @override
   State<_VideoFramePreview> createState() => _VideoFramePreviewState();
@@ -881,7 +946,22 @@ class _VideoFramePreviewState extends State<_VideoFramePreview> {
   }
 
   Future<void> _load() async {
-    final controller = VideoPlayerController.file(File(widget.videoPath));
+    VideoPlayerController controller;
+    final file = File(widget.videoPath);
+    if (file.existsSync()) {
+      controller = VideoPlayerController.file(file);
+    } else if (widget.videoPath.startsWith('http://') || widget.videoPath.startsWith('https://')) {
+      controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoPath));
+    } else {
+      final client = widget.streakClient;
+      final baseUri = (client is AgentPetStreakClient)
+          ? client.baseUri
+          : Uri.parse('http://localhost:8000');
+      final separator = widget.videoPath.contains('/') ? '/' : '\\';
+      final filename = widget.videoPath.split(separator).last;
+      controller = VideoPlayerController.networkUrl(baseUri.resolve('/uploads/$filename'));
+    }
+
     try {
       await controller.initialize();
       await controller.pause();
@@ -923,10 +1003,15 @@ class _VideoFramePreviewState extends State<_VideoFramePreview> {
 }
 
 class _MomentPreviewCard extends StatelessWidget {
-  const _MomentPreviewCard({required this.day, required this.onTap});
+  const _MomentPreviewCard({
+    required this.day,
+    required this.onTap,
+    this.streakClient,
+  });
 
   final PetStreakDay day;
   final VoidCallback onTap;
+  final PetStreakClient? streakClient;
 
   @override
   Widget build(BuildContext context) {
@@ -952,20 +1037,33 @@ class _MomentPreviewCard extends StatelessWidget {
                 future: LocalMomentStorage.instance.momentsForDate(day.date),
                 builder: (context, snapshot) {
                   final records = snapshot.data ?? const [];
-                  if (records.isEmpty) {
+                  
+                  final dbImagePath = day.imagePath;
+                  final hasDbImage = dbImagePath != null && dbImagePath.isNotEmpty;
+
+                  if (records.isEmpty && !hasDbImage) {
                     return Text(
                       marker,
                       style: const TextStyle(fontSize: 24, height: 1),
                     );
                   }
 
-                  final latest = records.first;
+                  final isVideo = records.isNotEmpty
+                      ? records.first.isVideo
+                      : (dbImagePath!.toLowerCase().endsWith('.mp4') ||
+                         dbImagePath.toLowerCase().endsWith('.mov') ||
+                         dbImagePath.toLowerCase().endsWith('.avi'));
+                  final filePath = records.isNotEmpty ? records.first.filePath : dbImagePath!;
+
                   Widget thumbnail;
-                  if (latest.isVideo) {
+                  if (isVideo) {
                     thumbnail = Stack(
                       alignment: Alignment.center,
                       children: [
-                        _VideoFramePreview(videoPath: latest.filePath),
+                        _VideoFramePreview(
+                          videoPath: filePath,
+                          streakClient: streakClient,
+                        ),
                         const Icon(
                           Icons.play_circle_fill,
                           color: Colors.white,
@@ -974,8 +1072,9 @@ class _MomentPreviewCard extends StatelessWidget {
                       ],
                     );
                   } else {
-                    thumbnail = Image.file(
-                      File(latest.filePath),
+                    thumbnail = buildStreakDayMediaWidget(
+                      path: filePath,
+                      streakClient: streakClient,
                       width: 84,
                       height: 56,
                       fit: BoxFit.cover,
@@ -1055,9 +1154,10 @@ class _MomentPreviewCard extends StatelessWidget {
 }
 
 class _MomentPreviewSheet extends StatefulWidget {
-  const _MomentPreviewSheet({required this.day});
+  const _MomentPreviewSheet({required this.day, this.streakClient});
 
   final PetStreakDay day;
+  final PetStreakClient? streakClient;
 
   @override
   State<_MomentPreviewSheet> createState() => _MomentPreviewSheetState();
@@ -1078,10 +1178,73 @@ class _MomentPreviewSheetState extends State<_MomentPreviewSheet> {
     _load();
   }
 
+  VideoPlayerController _createVideoController(String path) {
+    final file = File(path);
+    if (file.existsSync()) {
+      return VideoPlayerController.file(file);
+    }
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return VideoPlayerController.networkUrl(Uri.parse(path));
+    }
+    final client = widget.streakClient;
+    final baseUri = (client is AgentPetStreakClient)
+        ? client.baseUri
+        : Uri.parse('http://localhost:8000');
+    final separator = path.contains('/') ? '/' : '\\';
+    final filename = path.split(separator).last;
+    return VideoPlayerController.networkUrl(baseUri.resolve('/uploads/$filename'));
+  }
+
+  Widget _buildImageWidget(String path, {BoxFit fit = BoxFit.cover}) {
+    final file = File(path);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        fit: fit,
+      );
+    }
+    String url;
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      url = path;
+    } else {
+      final client = widget.streakClient;
+      final baseUri = (client is AgentPetStreakClient)
+          ? client.baseUri
+          : Uri.parse('http://localhost:8000');
+      final separator = path.contains('/') ? '/' : '\\';
+      final filename = path.split(separator).last;
+      url = baseUri.resolve('/uploads/$filename').toString();
+    }
+    return Image.network(
+      url,
+      fit: fit,
+      errorBuilder: (context, error, stackTrace) {
+        return Container(
+          color: PetTheme.panelSoft,
+          child: const Center(
+            child: Icon(Icons.broken_image, color: Colors.white24, size: 40),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _load() async {
-    final records = await LocalMomentStorage.instance.momentsForDate(
+    var records = await LocalMomentStorage.instance.momentsForDate(
       widget.day.date,
     );
+    if (records.isEmpty && widget.day.imagePath != null && widget.day.imagePath!.isNotEmpty) {
+      final isVideo = widget.day.imagePath!.toLowerCase().endsWith('.mp4') ||
+          widget.day.imagePath!.toLowerCase().endsWith('.mov') ||
+          widget.day.imagePath!.toLowerCase().endsWith('.avi');
+      records = [
+        LocalMomentRecord(
+          date: widget.day.date,
+          filePath: widget.day.imagePath!,
+          isVideo: isVideo,
+        )
+      ];
+    }
     if (!mounted) return;
     setState(() {
       _records = records;
@@ -1100,7 +1263,7 @@ class _MomentPreviewSheetState extends State<_MomentPreviewSheet> {
     final record = _records[index];
     if (!record.isVideo) return;
 
-    final controller = VideoPlayerController.file(File(record.filePath));
+    final controller = _createVideoController(record.filePath);
     await controller.initialize();
     await controller.setLooping(true);
     await controller.play();
@@ -1206,8 +1369,8 @@ class _MomentPreviewSheetState extends State<_MomentPreviewSheet> {
                         );
                       }
                       if (!record.isVideo) {
-                        return Image.file(
-                          File(record.filePath),
+                        return _buildImageWidget(
+                          record.filePath,
                           fit: BoxFit.cover,
                         );
                       }
@@ -1252,9 +1415,12 @@ class _MomentPreviewSheetState extends State<_MomentPreviewSheet> {
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(5),
                             child: record.isVideo
-                                ? _VideoFramePreview(videoPath: record.filePath)
-                                : Image.file(
-                                    File(record.filePath),
+                                ? _VideoFramePreview(
+                                    videoPath: record.filePath,
+                                    streakClient: widget.streakClient,
+                                  )
+                                : _buildImageWidget(
+                                    record.filePath,
                                     fit: BoxFit.cover,
                                   ),
                           ),
