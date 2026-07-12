@@ -1542,6 +1542,11 @@ class FakeAgentClient implements AgentStreamClient {
       throw StateError('network failed');
     }
   }
+
+  @override
+  Future<UploadedMedia> uploadMedia(File file) async {
+    return UploadedMedia(url: '', path: file.path);
+  }
 }
 
 class CapturingHttpClient extends http.BaseClient {

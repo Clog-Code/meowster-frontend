@@ -735,10 +735,8 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   }
 
   Future<void> _stopDictation() async {
-    var stoppedCleanly = false;
     try {
       await _speechToTextService.stop();
-      stoppedCleanly = true;
     } on Object catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(
