@@ -5,7 +5,6 @@ import '../data/services/pet_box_detector.dart';
 import '../data/services/pet_streak_client.dart';
 import '../data/services/text_to_speech_service.dart';
 import '../data/services/visual_llm_client.dart';
-import '../domain/models/owner_profile.dart';
 import '../ui/core/pet_theme.dart';
 import '../ui/features/capture/capture_screen.dart';
 import '../ui/features/chat/agent_chat_screen.dart';
