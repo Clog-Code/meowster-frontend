@@ -23,7 +23,6 @@ class PetCaptureResult {
     String? petId,
     double? emotionConfidence,
     Map<String, double>? emotionProbabilities,
-    List<PetTrackingSample>? trackingSamples,
     String? path,
     String? uploadedImagePath,
   }) {
@@ -36,7 +35,6 @@ class PetCaptureResult {
       petId: petId ?? this.petId,
       emotionConfidence: emotionConfidence ?? this.emotionConfidence,
       emotionProbabilities: emotionProbabilities ?? this.emotionProbabilities,
-      trackingSamples: trackingSamples ?? this.trackingSamples,
       path: path ?? this.path,
       uploadedImagePath: uploadedImagePath ?? this.uploadedImagePath,
     );
