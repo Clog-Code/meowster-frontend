@@ -300,6 +300,10 @@ class IsometricHomeViewModel extends ChangeNotifier {
 
   void resumeStandby() {
     refreshBackground();
+    _isStandbyRunning = false;
+    _petsLoaded = false;
+    _standbyTimers.clear();
+    _forcedNextActions.clear();
     startStandby();
   }
 
