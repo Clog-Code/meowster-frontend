@@ -43,8 +43,11 @@ class _IsometricHomePageState extends State<IsometricHomePage>
   void initState() {
     super.initState();
     _ownsViewModel = widget.viewModel == null;
-    _viewModel =
-        widget.viewModel ?? IsometricHomeViewModel(client: widget.client);
+    _viewModel = widget.viewModel ??
+        IsometricHomeViewModel(
+          client: widget.client,
+          streakClient: widget.streakClient,
+        );
     WidgetsBinding.instance.addObserver(this);
     _viewModel.startStandby();
   }
@@ -126,8 +129,10 @@ class _IsometricHomePageState extends State<IsometricHomePage>
                 onOpenCamera: () =>
                     _openDestination(widget.captureScreenBuilder),
                 onOpenStreaks: _openStreakScreen,
-                onOpenChat: () => _openDestination(widget.chatScreenBuilder),
+                onOpenChat: () =>
+                    _openDestination(widget.chatScreenBuilder),
                 onAddPet: _showAddPetModal,
+                streakCount: _viewModel.currentStreak,
               );
             },
           );
@@ -146,6 +151,7 @@ class _PetRoomScene extends StatelessWidget {
     required this.onOpenStreaks,
     required this.onOpenChat,
     required this.onAddPet,
+    this.streakCount = 0,
   });
 
   final PetRoomState state;
@@ -155,6 +161,7 @@ class _PetRoomScene extends StatelessWidget {
   final VoidCallback onOpenStreaks;
   final VoidCallback onOpenChat;
   final VoidCallback onAddPet;
+  final int streakCount;
 
   @override
   Widget build(BuildContext context) {
@@ -226,8 +233,9 @@ class _PetRoomScene extends StatelessWidget {
                 child: _GlassCommandButton(
                   tooltip: 'Open pet moment streak calendar',
                   icon: Icons.local_fire_department_rounded,
-                  label: 'Pet Moment Streaks',
+                  label: '$streakCount Streak${streakCount >= 1 ? "s" : ""}',
                   onPressed: onOpenStreaks,
+                  iconColor: streakCount > 0 ? PetTheme.coral : PetTheme.muted,
                 ),
               ),
             ),
@@ -1052,12 +1060,14 @@ class _GlassCommandButton extends StatelessWidget {
     required this.icon,
     this.label,
     required this.onPressed,
+    this.iconColor = PetTheme.coral,
   });
 
   final String tooltip;
   final IconData icon;
   final String? label;
   final VoidCallback onPressed;
+  final Color iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -1067,10 +1077,10 @@ class _GlassCommandButton extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Tooltip(
           message: tooltip,
-          child: label == null || label!.isEmpty
+                  child: label == null || label!.isEmpty
               ? IconButton(
                   onPressed: onPressed,
-                  icon: Icon(icon, color: PetTheme.coral),
+                  icon: Icon(icon, color: iconColor),
                   style: IconButton.styleFrom(
                     backgroundColor: const Color(0x66171B22),
                     foregroundColor: PetTheme.ivory,
@@ -1092,7 +1102,7 @@ class _GlassCommandButton extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  icon: Icon(icon, color: PetTheme.coral),
+                  icon: Icon(icon, color: iconColor),
                   label: Text(
                     label!,
                     style: const TextStyle(fontWeight: FontWeight.w700),

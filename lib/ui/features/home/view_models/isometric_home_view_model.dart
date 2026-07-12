@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 
 import '../../../../data/services/agent_stream_client.dart';
+import '../../../../data/services/pet_streak_client.dart';
 import '../models/pet_room_state.dart';
 
 typedef DeviceClock = DateTime Function();
@@ -150,6 +151,7 @@ class IsometricHomeViewModel extends ChangeNotifier {
     Random? random,
     this.actionSelector,
     this.client,
+    this.streakClient,
   }) : _clock = clock,
        _random = random ?? Random(),
        _state = PetRoomState(
@@ -161,6 +163,8 @@ class IsometricHomeViewModel extends ChangeNotifier {
   final Random _random;
   final StandbyActionSelector? actionSelector;
   final AgentStreamClient? client;
+  final PetStreakClient? streakClient;
+  int currentStreak = 0;
   final Map<String, Timer> _standbyTimers = {};
   final Map<String, PetStandbyActionId> _forcedNextActions = {};
   bool _isStandbyRunning = false;
@@ -202,8 +206,27 @@ class IsometricHomeViewModel extends ChangeNotifier {
       for (final pet in petStates) {
         loadPetProfile(pet.id);
       }
+      _loadStreak();
     } on AgentConnectionException {
       // Backend unavailable.
+    }
+  }
+
+  void refreshStreak() {
+    _loadStreak();
+  }
+
+  Future<void> _loadStreak() async {
+    final c = streakClient;
+    if (c == null) return;
+    final petId = _state.selectedPetId ?? _state.pets.firstOrNull?.id;
+    if (petId == null) return;
+    try {
+      final summary = await c.fetchStreakSummary(petId: petId);
+      currentStreak = summary.currentStreak;
+      notifyListeners();
+    } on AgentConnectionException {
+      // Streak backend unavailable.
     }
   }
 
@@ -250,6 +273,7 @@ class IsometricHomeViewModel extends ChangeNotifier {
       clearSelectedPet: isAlreadySelected,
     );
     notifyListeners();
+    if (!isAlreadySelected) _loadStreak();
   }
 
   void refreshBackground() {
