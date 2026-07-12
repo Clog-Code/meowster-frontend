@@ -21,6 +21,7 @@ import '../chat/agent_chat_screen.dart';
 import '../streak/pet_moment_streak_screen.dart';
 import 'view_models/capture_view_model.dart';
 import 'views/replay_tracking_viewport.dart';
+import '../../../data/services/local_moment_storage.dart';
 
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({
@@ -592,6 +593,12 @@ class _CaptureScreenState extends State<CaptureScreen>
     if (preview == null || _savingMoment || _momentSaved) return;
     setState(() => _savingMoment = true);
     try {
+      if (preview.path != null) {
+        await LocalMomentStorage.instance.saveMoment(
+          sourcePath: preview.path!,
+          isVideo: preview.kind == CaptureMediaKind.video,
+        );
+      }
       await _recordPetMoment(preview);
       if (!mounted) return;
       setState(() => _momentSaved = true);

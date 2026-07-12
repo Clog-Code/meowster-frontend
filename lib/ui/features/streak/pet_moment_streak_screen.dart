@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:video_player/video_player.dart';
 
+import '../../../data/services/local_moment_storage.dart';
 import '../../../data/services/pet_streak_client.dart';
 import '../../../domain/models/pet_streak_summary.dart';
 import '../../core/pet_theme.dart';
@@ -848,11 +851,72 @@ class _MomentReel extends StatelessWidget {
   void _showMomentPreview(BuildContext context, PetStreakDay day) {
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: PetTheme.panel,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
       ),
       builder: (context) => _MomentPreviewSheet(day: day),
+    );
+  }
+}
+
+class _VideoFramePreview extends StatefulWidget {
+  const _VideoFramePreview({required this.videoPath});
+
+  final String videoPath;
+
+  @override
+  State<_VideoFramePreview> createState() => _VideoFramePreviewState();
+}
+
+class _VideoFramePreviewState extends State<_VideoFramePreview> {
+  VideoPlayerController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final controller = VideoPlayerController.file(File(widget.videoPath));
+    try {
+      await controller.initialize();
+      await controller.pause();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() => _controller = controller);
+    } on Object {
+      await controller.dispose();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) {
+      return Container(width: 84, height: 56, color: PetTheme.panelSoft);
+    }
+    return SizedBox(
+      width: 84,
+      height: 56,
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: controller.value.size.width,
+          height: controller.value.size.height,
+          child: VideoPlayer(controller),
+        ),
+      ),
     );
   }
 }
@@ -883,7 +947,68 @@ class _MomentPreviewCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(marker, style: const TextStyle(fontSize: 24, height: 1)),
+              FutureBuilder<List<LocalMomentRecord>>(
+                future: LocalMomentStorage.instance.momentsForDate(day.date),
+                builder: (context, snapshot) {
+                  final records = snapshot.data ?? const [];
+                  if (records.isEmpty) {
+                    return Text(marker, style: const TextStyle(fontSize: 24, height: 1));
+                  }
+
+                  final latest = records.first;
+                  Widget thumbnail;
+                  if (latest.isVideo) {
+                    thumbnail = Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        _VideoFramePreview(videoPath: latest.filePath),
+                        const Icon(Icons.play_circle_fill, color: Colors.white, size: 26),
+                      ],
+                    );
+                  } else {
+                    thumbnail = Image.file(
+                      File(latest.filePath),
+                      width: 84,
+                      height: 56,
+                      fit: BoxFit.cover,
+                    );
+                  }
+
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Stack(
+                      children: [
+                        thumbnail,
+                        if (records.length > 1)
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: const Color(0xCC000000),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                child: Text(
+                                  '+${records.length - 1}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
               const Spacer(),
               Text(
                 _shortDate(day.date),
@@ -921,15 +1046,102 @@ class _MomentPreviewCard extends StatelessWidget {
   }
 }
 
-class _MomentPreviewSheet extends StatelessWidget {
+class _MomentPreviewSheet extends StatefulWidget {
   const _MomentPreviewSheet({required this.day});
 
   final PetStreakDay day;
 
   @override
+  State<_MomentPreviewSheet> createState() => _MomentPreviewSheetState();
+}
+
+class _MomentPreviewSheetState extends State<_MomentPreviewSheet> {
+  final _pageController = PageController();
+  final _filmstripController = ScrollController();
+
+  VideoPlayerController? _videoController;
+  List<LocalMomentRecord> _records = const [];
+  int _selectedIndex = 0;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final records =
+        await LocalMomentStorage.instance.momentsForDate(widget.day.date);
+    if (!mounted) return;
+    setState(() {
+      _records = records;
+      _loading = false;
+    });
+    if (records.isNotEmpty) {
+      await _loadVideoForIndex(0);
+    }
+  }
+
+  Future<void> _loadVideoForIndex(int index) async {
+    final oldController = _videoController;
+    if (mounted) setState(() => _videoController = null);
+    await oldController?.dispose();
+
+    final record = _records[index];
+    if (!record.isVideo) return;
+
+    final controller = VideoPlayerController.file(File(record.filePath));
+    await controller.initialize();
+    await controller.setLooping(true);
+    await controller.play();
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+    setState(() => _videoController = controller);
+  }
+
+  void _onPageChanged(int index) {
+    setState(() => _selectedIndex = index);
+    _loadVideoForIndex(index);
+    _scrollFilmstripTo(index);
+  }
+
+  void _onThumbnailTap(int index) {
+    if (index == _selectedIndex) return;
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+    );
+  }
+
+  void _scrollFilmstripTo(int index) {
+    if (!_filmstripController.hasClients) return;
+    const itemExtent = 64.0; // 56 thumbnail width + 8 spacing
+    final target = (index * itemExtent) - 100;
+    _filmstripController.animateTo(
+      target.clamp(0.0, _filmstripController.position.maxScrollExtent),
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    _pageController.dispose();
+    _filmstripController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final day = widget.day;
     final marker = catMomentMarker(day);
     final healthLabel = day.isHealthy ? 'Healthy moment' : 'Needs attention';
+
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
@@ -937,6 +1149,109 @@ class _MomentPreviewSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: CircularProgressIndicator(color: PetTheme.aqua),
+                ),
+              )
+            else if (_records.isNotEmpty) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: AspectRatio(
+                  aspectRatio: 3 / 4,
+                  child: PageView.builder(
+                    controller: _pageController,
+                    itemCount: _records.length,
+                    onPageChanged: _onPageChanged,
+                    itemBuilder: (context, index) {
+                      final record = _records[index];
+                      final isCurrent = index == _selectedIndex;
+                      final controller = _videoController;
+
+                      if (record.isVideo &&
+                          isCurrent &&
+                          controller != null &&
+                          controller.value.isInitialized) {
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              controller.value.isPlaying
+                                  ? controller.pause()
+                                  : controller.play();
+                            });
+                          },
+                          child: FittedBox(
+                            fit: BoxFit.cover,
+                            child: SizedBox(
+                              width: controller.value.size.width,
+                              height: controller.value.size.height,
+                              child: VideoPlayer(controller),
+                            ),
+                          ),
+                        );
+                      }
+                      if (!record.isVideo) {
+                        return Image.file(
+                          File(record.filePath),
+                          fit: BoxFit.cover,
+                        );
+                      }
+                      return Container(
+                        color: PetTheme.panelSoft,
+                        child: const Center(
+                          child:
+                              CircularProgressIndicator(color: PetTheme.aqua),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              if (_records.length > 1) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 56,
+                  child: ListView.separated(
+                    controller: _filmstripController,
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _records.length,
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final record = _records[index];
+                      final selected = index == _selectedIndex;
+                      return GestureDetector(
+                        onTap: () => _onThumbnailTap(index),
+                        child: Container(
+                          width: 56,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: selected
+                                  ? PetTheme.aqua
+                                  : const Color(0x24FFFFFF),
+                              width: selected ? 2 : 1,
+                            ),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(5),
+                            child: record.isVideo
+                                ? _VideoFramePreview(videoPath: record.filePath)
+                                : Image.file(
+                                    File(record.filePath),
+                                    fit: BoxFit.cover,
+                                  ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ],
+            const SizedBox(height: 18),
             Row(
               children: [
                 Container(
