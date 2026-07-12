@@ -1,3 +1,5 @@
+import 'pet_tracking_sample.dart';
+
 enum CaptureMediaKind { video, image, demo }
 
 class PetCaptureResult {
@@ -7,9 +9,12 @@ class PetCaptureResult {
     required this.emotion,
     required this.healthFlags,
     required this.sourceLabel,
+    this.petId = 'pet-01',
     this.emotionConfidence,
     this.emotionProbabilities,
+    this.trackingSamples = const [],
     this.path,
+    this.uploadedImagePath,
   });
 
   final CaptureMediaKind kind;
@@ -17,9 +22,18 @@ class PetCaptureResult {
   final String emotion;
   final List<String> healthFlags;
   final String sourceLabel;
+  final String petId;
   final double? emotionConfidence;
   final Map<String, double>? emotionProbabilities;
+  final List<PetTrackingSample> trackingSamples;
   final String? path;
+
+  /// Server-side absolute path returned by the agentic backend's
+  /// `POST /upload`, when this capture was also uploaded there. Threaded
+  /// into the perception payload's `notes` so the orchestrator can pass it
+  /// on to a subagent's `visual_search` tool (breed/condition ID via Google
+  /// Lens) — independent of the on-device ML emotion model above.
+  final String? uploadedImagePath;
 
   String get attachmentLabel {
     final labels = [species, emotion, ...healthFlags].join(' / ');
@@ -35,8 +49,7 @@ class PetCaptureResult {
 
   Map<String, dynamic> get mockPetProfile {
     return {
-      'pet_id': 'pet-01',
-      'name': 'Mochi',
+      'pet_id': petId,
       'species': species,
       'breed': species == 'cat' ? 'Domestic Shorthair' : null,
       'weight_kg': species == 'cat' ? 4.2 : null,
@@ -52,7 +65,7 @@ class PetCaptureResult {
 
   Map<String, dynamic> toPerceptionPayload(String threadId) {
     return {
-      'pet_id': 'pet-01',
+      'pet_id': petId,
       'pet_profile': mockPetProfile,
       'species': species,
       'emotion': emotion,
@@ -62,9 +75,16 @@ class PetCaptureResult {
       'health_flags': healthFlags,
       'thread_id': threadId,
       'timestamp': DateTime.now().toIso8601String(),
-      'notes': emotionConfidence == null
-          ? 'Frontend MVP simulated perception from ${kind.name} capture.'
-          : 'Frontend MVP visual LLM perception from ${kind.name} capture.',
+      'notes': [
+        emotionConfidence == null
+            ? 'Frontend MVP simulated perception from ${kind.name} capture.'
+            : 'Frontend MVP visual LLM perception from ${kind.name} capture.',
+        // Picked up by the orchestrator's delegation rules (see
+        // initializer_prompt.md: "pass an image URL or path when one is
+        // available") to trigger the visual_search tool in a subagent.
+        if (uploadedImagePath != null)
+          'attached_image_path: $uploadedImagePath',
+      ].join(' '),
     };
   }
 }

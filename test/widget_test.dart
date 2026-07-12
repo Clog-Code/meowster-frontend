@@ -11,16 +11,26 @@ import 'package:amd_pet_frontend/data/services/speech_to_text_service.dart';
 import 'package:amd_pet_frontend/data/services/text_to_speech_service.dart';
 import 'package:amd_pet_frontend/data/services/visual_llm_client.dart';
 import 'package:amd_pet_frontend/domain/models/camera_zoom_state.dart';
+import 'package:amd_pet_frontend/domain/models/owner_profile.dart';
 import 'package:amd_pet_frontend/domain/models/pet_capture_result.dart';
 import 'package:amd_pet_frontend/domain/models/pet_streak_summary.dart';
 import 'package:amd_pet_frontend/ui/core/pet_theme.dart';
+import 'package:amd_pet_frontend/ui/features/capture/capture_screen.dart';
 import 'package:amd_pet_frontend/ui/features/chat/agent_chat_screen.dart';
+import 'package:amd_pet_frontend/ui/features/home/views/isometric_home_page.dart';
 import 'package:amd_pet_frontend/ui/features/streak/pet_moment_streak_screen.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+
+Future<void> openCameraFromHome(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('pet-mochi-sprite')));
+  await tester.pump();
+  await tester.tap(find.byTooltip('Open camera'));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   test('AgentSseParser handles split chunks and malformed events', () {
@@ -324,7 +334,93 @@ void main() {
     );
   });
 
-  testWidgets('app opens on the capture page with fallback camera UI', (
+  testWidgets('app opens on the isometric home page', (tester) async {
+    await tester.pumpWidget(
+      PetAgentApp(
+        client: FakeAgentClient(),
+        streakClient: FakeStreakClient(),
+        enableCamera: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(IsometricHomePage), findsOneWidget);
+    expect(find.byKey(const Key('isometric-room-background')), findsOneWidget);
+    expect(find.byKey(const Key('isometric-transparent-room')), findsOneWidget);
+    expect(find.byKey(const Key('isometric-room-viewer')), findsOneWidget);
+    expect(find.text('Pet Moment Streaks'), findsOneWidget);
+    expect(find.byType(CaptureScreen), findsNothing);
+  });
+
+  testWidgets('capture and replay controls fit a compact phone viewport', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      PetAgentApp(
+        client: FakeAgentClient(),
+        streakClient: FakeStreakClient(),
+        enableCamera: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await openCameraFromHome(tester);
+
+    expect(find.byKey(const Key('story-shutter')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('Demo capture'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('preview-ml-tags')), findsOneWidget);
+    expect(find.text('Save Moment'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('divider swipe reveals hardware-aware zoom presets', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      PetAgentApp(
+        client: FakeAgentClient(),
+        streakClient: FakeStreakClient(),
+        enableCamera: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await openCameraFromHome(tester);
+
+    expect(find.text('.5x'), findsNothing);
+    await tester.fling(
+      find.byKey(const Key('capture-status-divider')),
+      const Offset(0, -100),
+      600,
+    );
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(find.text('.5x'), findsOneWidget);
+    expect(find.text('1x'), findsOneWidget);
+    expect(find.text('2x'), findsOneWidget);
+    expect(find.text('5x'), findsOneWidget);
+    expect(
+      tester
+          .widget<InkResponse>(find.byKey(const Key('zoom-preset-0.5')))
+          .onTap,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<InkResponse>(find.byKey(const Key('zoom-preset-1.0')))
+          .onTap,
+      isNotNull,
+    );
+  });
+
+  testWidgets('pet stat card opens camera and camera returns home', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -336,11 +432,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Capture The Pet Moment'), findsOneWidget);
-    expect(find.text('Pet moment'), findsOneWidget);
-    expect(find.text('4'), findsOneWidget);
-    expect(find.byIcon(Icons.local_fire_department), findsWidgets);
-    expect(find.byTooltip('Upload picture'), findsOneWidget);
+    await openCameraFromHome(tester);
+    expect(find.byType(CaptureScreen), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Pet room'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(IsometricHomePage), findsOneWidget);
+    expect(find.byType(CaptureScreen), findsNothing);
   });
 
   testWidgets('pet moment streak pill opens calendar with healthy markers', (
@@ -359,11 +458,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Pet moment streak'), findsOneWidget);
-    expect(find.text('July 2026'), findsOneWidget);
     expect(find.text('4 day streak'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Weekly view'), 300);
     expect(find.text('Using app'), findsOneWidget);
     expect(find.text('Weekly view'), findsOneWidget);
-    expect(find.text('2/31'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('July 2026'), 300);
+    expect(find.text('July 2026'), findsOneWidget);
     expect(find.text('😺'), findsOneWidget);
     expect(find.text('😿'), findsOneWidget);
     expect(find.text('🐾'), findsWidgets);
@@ -400,6 +500,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(find.text('July 2026'), 300);
     expect(find.text('July 2026'), findsOneWidget);
     expect(find.text('1/31'), findsOneWidget);
 
@@ -461,7 +562,7 @@ void main() {
     expect(find.text('curious'), findsWidgets);
   });
 
-  testWidgets('streak backend failure shows retry without blocking capture', (
+  testWidgets('streak backend failure shows retry without blocking home', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -473,8 +574,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Capture The Pet Moment'), findsOneWidget);
-    expect(find.text('0'), findsOneWidget);
+    expect(find.byType(IsometricHomePage), findsOneWidget);
 
     await tester.tap(find.byTooltip('Open pet moment streak calendar'));
     await tester.pumpAndSettle();
@@ -499,6 +599,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Pet moment streak'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('No pet moments recorded for this month yet.'),
+      300,
+    );
     expect(
       find.text('No pet moments recorded for this month yet.'),
       findsOneWidget,
@@ -568,11 +672,13 @@ void main() {
       ),
     );
     await tester.pump();
+    await openCameraFromHome(tester);
 
     await tester.tap(find.byTooltip('Demo capture'));
     await tester.pumpAndSettle();
-    expect(find.text('READY FOR AGENT REVIEW'), findsOneWidget);
-    expect(find.text('CAT / DISTRESS'), findsOneWidget);
+    expect(find.text('CAT'), findsOneWidget);
+    expect(find.text('DISTRESS'), findsOneWidget);
+    expect(find.byKey(const Key('preview-ml-tags')), findsOneWidget);
 
     await tester.tap(find.text('Ask Agent'));
     await tester.pumpAndSettle();
@@ -605,14 +711,16 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await openCameraFromHome(tester);
 
     await tester.tap(find.byTooltip('Demo capture'));
     await tester.pumpAndSettle();
 
     expect(find.text('Save Moment'), findsOneWidget);
     expect(find.text('Ask Agent'), findsOneWidget);
-    expect(find.text('READY FOR AGENT REVIEW'), findsOneWidget);
-    expect(find.text('CAT / DISTRESS'), findsOneWidget);
+    expect(find.text('CAT'), findsOneWidget);
+    expect(find.text('DISTRESS'), findsOneWidget);
+    expect(find.text('Tracking Unavailable'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('Retake')).dy,
       lessThan(tester.getTopLeft(find.text('Save Moment')).dy),
@@ -624,9 +732,34 @@ void main() {
 
     expect(client.paths, ['/perception']);
     expect(client.payloads.single['emotion'], 'distress');
-    expect(find.text('Saved'), findsOneWidget);
-    expect(find.text('READY FOR AGENT REVIEW'), findsOneWidget);
+    expect(find.text('Capture The Pet Moment'), findsOneWidget);
+    expect(find.text('SCANNING FOR PET'), findsOneWidget);
     expect(find.byType(AgentChatScreen), findsNothing);
+  });
+
+  testWidgets('replay tracking is disabled without captured samples', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      PetAgentApp(
+        client: FakeAgentClient(),
+        streakClient: FakeStreakClient(),
+        enableCamera: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await openCameraFromHome(tester);
+
+    await tester.tap(find.byTooltip('Demo capture'));
+    await tester.pumpAndSettle();
+
+    final button = tester.widget<OutlinedButton>(
+      find.byKey(const Key('tracking-mode-toggle')),
+    );
+    expect(button.onPressed, isNull);
+    expect(find.text('Tracking Unavailable'), findsOneWidget);
+    expect(find.text('CAT'), findsOneWidget);
+    expect(find.text('DISTRESS'), findsOneWidget);
   });
 
   testWidgets('predicted image capture sends visual emotion payload', (
@@ -1022,6 +1155,45 @@ void main() {
     expect(messages.last['content'], 'My cat has watery eyes');
   });
 
+  testWidgets('owner profile is sent as state', (tester) async {
+    final client = FakeAgentClient();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: PetTheme.dark(),
+        home: AgentChatScreen(
+          client: client,
+          ownerProfile: const OwnerProfile(
+            name: 'Dickson Lai',
+            phone: '+65 8xxx 9460',
+            address: '14000 Bukit Mertajam, Pulau Pinang',
+          ),
+          textToSpeechService: FakeTextToSpeechService(),
+          autoReadPreferenceStore: FakeAutoReadPreferenceStore(enabled: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'Hello');
+    await tester.ensureVisible(find.byTooltip('Send'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Send'));
+    await tester.pumpAndSettle();
+
+    final state = client.payloads.last['state'] as Map<String, dynamic>;
+    expect(state, contains('owner_profile'));
+    expect(state['owner_profile'], containsPair('owner_name', 'Dickson Lai'));
+    expect(
+      state['owner_profile'],
+      containsPair('owner_phone', '+65 8xxx 9460'),
+    );
+    expect(
+      state['owner_profile'],
+      containsPair('owner_address', '14000 Bukit Mertajam, Pulau Pinang'),
+    );
+  });
+
   testWidgets('runtime speech errors close waveform without clearing draft', (
     tester,
   ) async {
@@ -1410,6 +1582,34 @@ class FakeAgentClient implements AgentStreamClient {
       throw StateError('network failed');
     }
   }
+
+  @override
+  Future<UploadedMedia> uploadMedia(File file) async {
+    return UploadedMedia(url: '', path: file.path);
+  }
+
+  @override
+  Future<List<ChatThreadSummary>> fetchThreads({int limit = 50}) async {
+    return [];
+  }
+
+  @override
+  Future<List<ChatMessage>> fetchThreadMessages(String threadId) async {
+    return [];
+  }
+
+  @override
+  Future<Map<String, dynamic>?> fetchPetProfile(String petId) async {
+    return null;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchPetProfiles() async {
+    return [];
+  }
+
+  @override
+  Future<void> createPetProfile(Map<String, String> profile) async {}
 }
 
 class CapturingHttpClient extends http.BaseClient {

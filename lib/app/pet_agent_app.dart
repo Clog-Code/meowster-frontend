@@ -7,6 +7,8 @@ import '../data/services/text_to_speech_service.dart';
 import '../data/services/visual_llm_client.dart';
 import '../ui/core/pet_theme.dart';
 import '../ui/features/capture/capture_screen.dart';
+import '../ui/features/chat/agent_chat_screen.dart';
+import '../ui/features/home/views/isometric_home_page.dart';
 
 class PetAgentApp extends StatelessWidget {
   const PetAgentApp({
@@ -34,14 +36,26 @@ class PetAgentApp extends StatelessWidget {
       title: 'Pet Agent',
       debugShowCheckedModeBanner: false,
       theme: PetTheme.dark(),
-      home: CaptureScreen(
+      home: IsometricHomePage(
         client: client,
         streakClient: streakClient,
-        visualLlmClient: visualLlmClient,
-        petBoxDetector: petBoxDetector,
-        textToSpeechService: textToSpeechService,
-        autoReadPreferenceStore: autoReadPreferenceStore,
-        enableCamera: enableCamera,
+        captureScreenBuilder: (context) => CaptureScreen(
+          client: client,
+          streakClient: streakClient,
+          visualLlmClient: visualLlmClient,
+          petBoxDetector: petBoxDetector,
+          textToSpeechService: textToSpeechService,
+          autoReadPreferenceStore: autoReadPreferenceStore,
+          enableCamera: enableCamera,
+        ),
+        chatScreenBuilder: (context, ownerProfile) => AgentChatScreen(
+          client: client,
+          streakClient: streakClient,
+          visualLlmClient: visualLlmClient,
+          ownerProfile: ownerProfile,
+          textToSpeechService: textToSpeechService,
+          autoReadPreferenceStore: autoReadPreferenceStore,
+        ),
       ),
     );
   }

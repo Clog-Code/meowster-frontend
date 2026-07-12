@@ -59,11 +59,13 @@ class PetMomentStreakScreen extends StatefulWidget {
   const PetMomentStreakScreen({
     required this.streakClient,
     this.petId = 'pet-01',
+    this.petName = 'Pet',
     super.key,
   });
 
   final PetStreakClient streakClient;
   final String petId;
+  final String petName;
 
   @override
   State<PetMomentStreakScreen> createState() => _PetMomentStreakScreenState();
@@ -103,11 +105,11 @@ class _PetMomentStreakScreenState extends State<PetMomentStreakScreen> {
             }
 
             if (snapshot.hasError) {
-              return _StreakErrorState(onRetry: _retry);
+              return _StreakErrorState(onRetry: _retry, petName: widget.petName);
             }
 
             final summary = snapshot.data ?? PetStreakSummary.empty();
-            return _StreakContent(summary: summary);
+            return _StreakContent(summary: summary, petName: widget.petName);
           },
         ),
       ),
@@ -116,9 +118,10 @@ class _PetMomentStreakScreenState extends State<PetMomentStreakScreen> {
 }
 
 class _StreakContent extends StatefulWidget {
-  const _StreakContent({required this.summary});
+  const _StreakContent({required this.summary, required this.petName});
 
   final PetStreakSummary summary;
+  final String petName;
 
   @override
   State<_StreakContent> createState() => _StreakContentState();
@@ -155,7 +158,7 @@ class _StreakContentState extends State<_StreakContent> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
       children: [
-        _HeroStreak(summary: summary),
+        _HeroStreak(summary: summary, petName: widget.petName),
         const SizedBox(height: 18),
         Row(
           children: [
@@ -204,10 +207,13 @@ class _StreakContentState extends State<_StreakContent> {
   }
 }
 
+
+
 class _HeroStreak extends StatelessWidget {
-  const _HeroStreak({required this.summary});
+  const _HeroStreak({required this.summary, required this.petName});
 
   final PetStreakSummary summary;
+  final String petName;
 
   @override
   Widget build(BuildContext context) {
@@ -241,7 +247,7 @@ class _HeroStreak extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${summary.currentStreak} day streak',
+                    '$petName has ${summary.currentStreak} day streak${summary.currentStreak >= 1 ? 's' : ''}.',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
@@ -1325,12 +1331,14 @@ class _PreviewFact extends StatelessWidget {
       children: [
         Icon(icon, color: PetTheme.aqua, size: 20),
         const SizedBox(width: 10),
-        Text(label, style: const TextStyle(color: PetTheme.muted)),
-        const Spacer(),
-        Flexible(
+        SizedBox(
+          width: 90,
+          child: Text(label, style: const TextStyle(color: PetTheme.muted)),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
           child: Text(
             value,
-            textAlign: TextAlign.end,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
@@ -1391,9 +1399,10 @@ class _EmptyCalendarHint extends StatelessWidget {
 }
 
 class _StreakErrorState extends StatelessWidget {
-  const _StreakErrorState({required this.onRetry});
+  const _StreakErrorState({required this.onRetry, required this.petName});
 
   final VoidCallback onRetry;
+  final String petName;
 
   @override
   Widget build(BuildContext context) {
@@ -1401,7 +1410,7 @@ class _StreakErrorState extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
       children: [
-        _HeroStreak(summary: fallback),
+        _HeroStreak(summary: fallback, petName: petName),
         const SizedBox(height: 18),
         DecoratedBox(
           decoration: BoxDecoration(
