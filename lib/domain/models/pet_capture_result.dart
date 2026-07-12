@@ -1,5 +1,3 @@
-import 'pet_tracking_sample.dart';
-
 enum CaptureMediaKind { video, image, demo }
 
 class PetCaptureResult {
@@ -12,10 +10,35 @@ class PetCaptureResult {
     this.petId = 'pet-01',
     this.emotionConfidence,
     this.emotionProbabilities,
-    this.trackingSamples = const [],
     this.path,
     this.uploadedImagePath,
   });
+
+  PetCaptureResult copyWith({
+    CaptureMediaKind? kind,
+    String? species,
+    String? emotion,
+    List<String>? healthFlags,
+    String? sourceLabel,
+    String? petId,
+    double? emotionConfidence,
+    Map<String, double>? emotionProbabilities,
+    String? path,
+    String? uploadedImagePath,
+  }) {
+    return PetCaptureResult(
+      kind: kind ?? this.kind,
+      species: species ?? this.species,
+      emotion: emotion ?? this.emotion,
+      healthFlags: healthFlags ?? this.healthFlags,
+      sourceLabel: sourceLabel ?? this.sourceLabel,
+      petId: petId ?? this.petId,
+      emotionConfidence: emotionConfidence ?? this.emotionConfidence,
+      emotionProbabilities: emotionProbabilities ?? this.emotionProbabilities,
+      path: path ?? this.path,
+      uploadedImagePath: uploadedImagePath ?? this.uploadedImagePath,
+    );
+  }
 
   final CaptureMediaKind kind;
   final String species;
@@ -25,7 +48,6 @@ class PetCaptureResult {
   final String petId;
   final double? emotionConfidence;
   final Map<String, double>? emotionProbabilities;
-  final List<PetTrackingSample> trackingSamples;
   final String? path;
 
   /// Server-side absolute path returned by the agentic backend's
@@ -75,6 +97,7 @@ class PetCaptureResult {
       'health_flags': healthFlags,
       'thread_id': threadId,
       'timestamp': DateTime.now().toIso8601String(),
+      'image_path': uploadedImagePath,
       'notes': [
         emotionConfidence == null
             ? 'Frontend MVP simulated perception from ${kind.name} capture.'

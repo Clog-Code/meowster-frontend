@@ -11,32 +11,27 @@ class CaptureUiState {
   const CaptureUiState({
     required this.mode,
     required this.showZoomMultipliers,
-    required this.trackingMode,
     this.transitionTarget,
   });
 
   const CaptureUiState.initial()
     : mode = CaptureScreenMode.capture,
       showZoomMultipliers = false,
-      trackingMode = false,
       transitionTarget = null;
 
   final CaptureScreenMode mode;
   final bool showZoomMultipliers;
-  final bool trackingMode;
   final CaptureTransitionTarget? transitionTarget;
 
   CaptureUiState copyWith({
     CaptureScreenMode? mode,
     bool? showZoomMultipliers,
-    bool? trackingMode,
     CaptureTransitionTarget? transitionTarget,
     bool clearTransition = false,
   }) {
     return CaptureUiState(
       mode: mode ?? this.mode,
       showZoomMultipliers: showZoomMultipliers ?? this.showZoomMultipliers,
-      trackingMode: trackingMode ?? this.trackingMode,
       transitionTarget: clearTransition
           ? null
           : transitionTarget ?? this.transitionTarget,
@@ -57,7 +52,6 @@ class CaptureViewModel extends ChangeNotifier {
   void showCapture() => _setState(
     _state.copyWith(
       mode: CaptureScreenMode.capture,
-      trackingMode: false,
       showZoomMultipliers: false,
       clearTransition: true,
     ),
@@ -78,10 +72,6 @@ class CaptureViewModel extends ChangeNotifier {
     if (_state.showZoomMultipliers) {
       _setState(_state.copyWith(showZoomMultipliers: false));
     }
-  }
-
-  void toggleTrackingMode() {
-    _setState(_state.copyWith(trackingMode: !_state.trackingMode));
   }
 
   void beginTransition(CaptureTransitionTarget target) {

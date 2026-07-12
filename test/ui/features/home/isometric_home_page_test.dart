@@ -24,12 +24,12 @@ Widget _buildTestApp(IsometricHomeViewModel viewModel) {
   );
 }
 
-PetRoomPetState _makePet(String id, String name, {String emotion = 'Sleepy'}) {
+PetRoomPetState _makePet(String id, String name, {String mood = 'Sleepy', Offset? position}) {
   return PetRoomPetState(
     id: id,
-    stats: PetStats(name: name, species: 'Cat', emotion: emotion),
+    stats: PetStats(name: name, species: 'Cat', mood: mood),
     activeAction: standbyActionById(PetStandbyActionId.sleepAndWake),
-    normalizedPosition: const Offset(0.54, 0.72),
+    normalizedPosition: position ?? const Offset(0.54, 0.72),
   );
 }
 
@@ -38,8 +38,8 @@ void main() {
     final viewModel = IsometricHomeViewModel(
       clock: () => DateTime(2026, 7, 11, 12),
       initialPets: [
-        _makePet('mochi', 'Mochi'),
-        _makePet('luna', 'Luna'),
+        _makePet('mochi', 'Mochi', position: const Offset(0.50, 0.74)),
+        _makePet('luna', 'Luna', position: const Offset(0.66, 0.66)),
       ],
     );
     addTearDown(viewModel.dispose);
@@ -65,7 +65,7 @@ void main() {
     final viewer = tester.widget<InteractiveViewer>(
       find.byKey(const Key('isometric-room-viewer')),
     );
-    expect(viewer.minScale, 0.8);
+    expect(viewer.minScale, 0.4);
     expect(viewer.maxScale, 3);
     expect(find.byKey(const Key('pet-mochi-sprite')), findsOneWidget);
     expect(find.byKey(const Key('pet-luna-sprite')), findsOneWidget);
@@ -76,15 +76,15 @@ void main() {
           'sprite-animation-8-sleep.gif',
         ),
       ),
-      findsOneWidget,
+      findsNWidgets(2),
     );
   });
 
   testWidgets('pet tap toggles the glass stat card', (tester) async {
     final viewModel = IsometricHomeViewModel(
       initialPets: [
-        _makePet('mochi', 'Mochi'),
-        _makePet('luna', 'Luna'),
+        _makePet('mochi', 'Mochi', position: const Offset(0.50, 0.74)),
+        _makePet('luna', 'Luna', position: const Offset(0.66, 0.66)),
       ],
     );
     addTearDown(viewModel.dispose);
@@ -111,8 +111,8 @@ void main() {
   testWidgets('each pet opens its own stats', (tester) async {
     final viewModel = IsometricHomeViewModel(
       initialPets: [
-        _makePet('mochi', 'Mochi'),
-        _makePet('luna', 'Luna', emotion: 'Curious'),
+        _makePet('mochi', 'Mochi', position: const Offset(0.50, 0.74)),
+        _makePet('luna', 'Luna', mood: 'Curious', position: const Offset(0.66, 0.66)),
       ],
     );
     addTearDown(viewModel.dispose);
@@ -132,24 +132,24 @@ void main() {
 
   testWidgets('fixed overlays navigate to streaks and camera', (tester) async {
     final viewModel = IsometricHomeViewModel(
+      streakClient: const EmptyPetStreakClient(),
       initialPets: [
-        _makePet('mochi', 'Mochi'),
-        _makePet('luna', 'Luna'),
+        _makePet('mochi', 'Mochi', position: const Offset(0.50, 0.74)),
+        _makePet('luna', 'Luna', position: const Offset(0.66, 0.66)),
       ],
     );
     addTearDown(viewModel.dispose);
     await tester.pumpWidget(_buildTestApp(viewModel));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('pet-mochi-sprite')));
-    await tester.pump();
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Open pet moment streak calendar'));
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
     expect(find.byType(PetMomentStreakScreen), findsOneWidget);
     Navigator.of(tester.element(find.byType(PetMomentStreakScreen))).pop();
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('pet-mochi-sprite')));
-    await tester.pump();
     await tester.tap(find.byTooltip('Open camera'));
     await tester.pumpAndSettle();
     expect(find.text('Camera destination'), findsOneWidget);
@@ -195,12 +195,17 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final viewModel = IsometricHomeViewModel();
+    final viewModel = IsometricHomeViewModel(
+      initialPets: [
+        _makePet('mochi', 'Mochi', position: const Offset(0.50, 0.74)),
+      ],
+    );
     addTearDown(viewModel.dispose);
 
     await tester.pumpWidget(_buildTestApp(viewModel));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('pet-mochi-sprite')));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('pet-stat-card')), findsOneWidget);
     expect(tester.takeException(), isNull);

@@ -8,19 +8,18 @@ import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../data/services/agent_stream_client.dart';
-import '../../../data/services/pet_box_detector.dart';
 import '../../../data/services/pet_streak_client.dart';
 import '../../../data/services/text_to_speech_service.dart';
 import '../../../data/services/visual_llm_client.dart';
 import '../../../domain/models/camera_zoom_state.dart';
 import '../../../domain/models/pet_capture_result.dart';
 import '../../../domain/models/pet_streak_summary.dart';
-import '../../../domain/models/pet_tracking_sample.dart';
 import '../../core/pet_theme.dart';
 import '../chat/agent_chat_screen.dart';
 import '../streak/pet_moment_streak_screen.dart';
 import 'view_models/capture_view_model.dart';
-import 'views/replay_tracking_viewport.dart';
+import 'views/camera_preview_cover.dart';
+import '../../../data/services/local_moment_storage.dart';
 
 class CaptureScreen extends StatefulWidget {
   const CaptureScreen({
@@ -29,7 +28,6 @@ class CaptureScreen extends StatefulWidget {
     required this.petId,
     required this.petName,
     this.visualLlmClient = const DisabledVisualLlmClient(),
-    this.petBoxDetector,
     this.textToSpeechService,
     this.autoReadPreferenceStore,
     this.enableCamera = true,
@@ -42,7 +40,6 @@ class CaptureScreen extends StatefulWidget {
   final String petId;
   final String petName;
   final VisualLlmClient visualLlmClient;
-  final PetBoxDetector? petBoxDetector;
   final TextToSpeechService? textToSpeechService;
   final AutoReadPreferenceStore? autoReadPreferenceStore;
   final bool enableCamera;
@@ -59,39 +56,26 @@ class _CaptureScreenState extends State<CaptureScreen>
   static const double _maxUserZoom = 5;
 
   final _picker = ImagePicker();
-  late final PetBoxDetector _petBoxDetector;
-  final _petBoxTracker = PetBoxTracker();
-  final _recordingTrackingSamples = <PetTrackingSample>[];
-  final _recordingStopwatch = Stopwatch();
   CameraController? _cameraController;
-  CameraDescription? _activeCamera;
   VideoPlayerController? _videoController;
   PetCaptureResult? _preview;
-  PetBoxCandidate? _petBox;
   Timer? _recordingTimer;
   Timer? _instructionPulseTimer;
   Timer? _instructionReturnTimer;
-  DateTime? _lastPetBoxDetectionAt;
   CameraZoomState _zoom = const CameraZoomState(min: 1, max: 1, current: 1);
   double _zoomAtScaleStart = 1;
   double _shutterZoomStartY = 0;
   double _shutterZoomAtStart = 1;
   CameraZoomRequestCoordinator? _zoomRequestCoordinator;
-  int _trackingGeneration = 0;
-  _RecordingTrackingDiagnostics _recordingDiagnostics =
-      const _RecordingTrackingDiagnostics();
   bool _cameraLoading = true;
   bool _recording = false;
   bool _recordGestureActive = false;
   bool _analyzingImage = false;
   bool _analyzingVideo = false;
-  bool _detectingPetBox = false;
   bool _savingMoment = false;
   bool _momentSaved = false;
-  bool _disposing = false;
   bool _instructionsBright = false;
   String? _cameraError;
-  String? _petTrackingIssue;
   late Future<PetStreakSummary> _streakFuture;
   late final CaptureViewModel _viewModel;
   late final AnimationController _recordingProgressController;
@@ -113,7 +97,6 @@ class _CaptureScreenState extends State<CaptureScreen>
     _instructionReturnTimer = Timer(const Duration(milliseconds: 4400), () {
       if (mounted && !_recording) setState(() => _instructionsBright = true);
     });
-    _petBoxDetector = widget.petBoxDetector ?? MlKitPetBoxDetector();
     _streakFuture = _loadStreak();
     _initialiseCamera();
     if (widget.openGalleryOnStart) {
@@ -123,14 +106,11 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   @override
   void dispose() {
-    _disposing = true;
     _recordingTimer?.cancel();
     _instructionPulseTimer?.cancel();
     _instructionReturnTimer?.cancel();
     _recordingProgressController.dispose();
     _viewModel.dispose();
-    unawaited(_stopPetTracking());
-    unawaited(_petBoxDetector.close());
     _cameraController?.dispose();
     _videoController?.dispose();
     super.dispose();
@@ -166,9 +146,9 @@ class _CaptureScreenState extends State<CaptureScreen>
         camera,
         ResolutionPreset.high,
         enableAudio: false,
-        imageFormatGroup: Platform.isAndroid
-            ? ImageFormatGroup.nv21
-            : ImageFormatGroup.bgra8888,
+        // imageFormatGroup: Platform.isAndroid
+        //     ? ImageFormatGroup.nv21
+        //     : ImageFormatGroup.bgra8888,
       );
       await controller.initialize();
       final minZoom = await controller.getMinZoomLevel();
@@ -182,7 +162,6 @@ class _CaptureScreenState extends State<CaptureScreen>
       setState(() {
         _cameraController = controller;
         _zoomRequestCoordinator = null;
-        _activeCamera = camera;
         _zoom = CameraZoomState(
           min: minZoom,
           max: usableMaxZoom,
@@ -192,7 +171,6 @@ class _CaptureScreenState extends State<CaptureScreen>
         _cameraError = null;
       });
       await _applyZoom(_zoom.current);
-      await _startPetTracking();
     } on Object catch (error) {
       if (!mounted) return;
       setState(() {
@@ -214,16 +192,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     if (_recording) return;
 
     try {
-      _trackingGeneration += 1;
-      await _stopPetTracking();
-      _lastPetBoxDetectionAt = null;
-      _petBoxTracker.clear();
-      _detectingPetBox = false;
-      _recordingTrackingSamples.clear();
-      _recordingDiagnostics = const _RecordingTrackingDiagnostics();
-      _recordingStopwatch.reset();
-      await controller.startVideoRecording(onAvailable: _handleCameraImage);
-      _recordingStopwatch.start();
+      await controller.startVideoRecording();
       _viewModel.hideZoomMultipliers();
       setState(() {
         _recording = true;
@@ -233,10 +202,8 @@ class _CaptureScreenState extends State<CaptureScreen>
       _recordingTimer = Timer(const Duration(seconds: 10), _stopRecording);
       if (!_recordGestureActive) await _stopRecording();
     } on Object catch (error) {
-      _recordingStopwatch.stop();
       if (!mounted) return;
       setState(() => _cameraError = _cameraMessage(error));
-      unawaited(_startPetTracking());
     }
   }
 
@@ -246,15 +213,7 @@ class _CaptureScreenState extends State<CaptureScreen>
 
     _recordingTimer?.cancel();
     _recordingProgressController.stop();
-    _recordingStopwatch.stop();
-    final trackingSamples = sanitizeTrackingSamples(_recordingTrackingSamples);
-    debugPrint(
-      'Recording tracking: frames=${_recordingDiagnostics.frames}, '
-      'detections=${_recordingDiagnostics.detections}, '
-      'samples=${trackingSamples.length}, '
-      'errors=${_recordingDiagnostics.errors}, '
-      'lastError=${_recordingDiagnostics.lastError ?? 'none'}',
-    );
+
     try {
       final file = await controller.stopVideoRecording();
       if (mounted) {
@@ -266,11 +225,7 @@ class _CaptureScreenState extends State<CaptureScreen>
       }
 
       try {
-        await _analyzeVideo(
-          File(file.path),
-          sourceLabel: 'Captured video',
-          trackingSamples: trackingSamples,
-        );
+        await _analyzeVideo(File(file.path), sourceLabel: 'Captured video');
       } finally {
         if (mounted) {
           setState(() {
@@ -301,7 +256,10 @@ class _CaptureScreenState extends State<CaptureScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.photo_outlined, color: PetTheme.ivory),
+                leading: const Icon(
+                  Icons.photo_outlined,
+                  color: PetTheme.ivory,
+                ),
                 title: const Text(
                   'Upload photo',
                   style: TextStyle(color: PetTheme.ivory),
@@ -309,7 +267,10 @@ class _CaptureScreenState extends State<CaptureScreen>
                 onTap: () => Navigator.of(context).pop(_GalleryMediaType.image),
               ),
               ListTile(
-                leading: const Icon(Icons.videocam_outlined, color: PetTheme.ivory),
+                leading: const Icon(
+                  Icons.videocam_outlined,
+                  color: PetTheme.ivory,
+                ),
                 title: const Text(
                   'Upload video',
                   style: TextStyle(color: PetTheme.ivory),
@@ -368,13 +329,11 @@ class _CaptureScreenState extends State<CaptureScreen>
       return;
     }
     try {
-      await _stopPetTracking();
       final image = await controller.takePicture();
       await _analyzeImage(File(image.path), sourceLabel: 'Captured photo');
     } on Object catch (error) {
       if (!mounted) return;
       setState(() => _cameraError = _cameraMessage(error));
-      unawaited(_startPetTracking());
     }
   }
 
@@ -409,6 +368,7 @@ class _CaptureScreenState extends State<CaptureScreen>
             sourceLabel: sourceLabel,
             path: image.path,
             uploadedImagePath: uploadedImagePath,
+            petId: widget.petId,
           ),
         );
       } on Object catch (error) {
@@ -430,6 +390,7 @@ class _CaptureScreenState extends State<CaptureScreen>
             sourceLabel: sourceLabel,
             path: image.path,
             uploadedImagePath: uploadedImagePath,
+            petId: widget.petId,
           ),
         );
       }
@@ -438,11 +399,7 @@ class _CaptureScreenState extends State<CaptureScreen>
     }
   }
 
-  Future<void> _analyzeVideo(
-    File video, {
-    required String sourceLabel,
-    List<PetTrackingSample> trackingSamples = const [],
-  }) async {
+  Future<void> _analyzeVideo(File video, {required String sourceLabel}) async {
     try {
       if (mounted) {
         setState(() {
@@ -450,7 +407,9 @@ class _CaptureScreenState extends State<CaptureScreen>
           _cameraError = null;
         });
       }
-      final prediction = await widget.visualLlmClient.predictVideoEmotion(video);
+      final prediction = await widget.visualLlmClient.predictVideoEmotion(
+        video,
+      );
       await _setPreview(
         PetCaptureResult(
           kind: CaptureMediaKind.video,
@@ -458,10 +417,10 @@ class _CaptureScreenState extends State<CaptureScreen>
           emotion: prediction.predictedEmotion,
           emotionConfidence: prediction.confidence,
           emotionProbabilities: prediction.detailBreakdown,
-          trackingSamples: trackingSamples,
           healthFlags: const [],
           sourceLabel: sourceLabel,
           path: video.path,
+          petId: widget.petId,
         ),
       );
     } on Object catch (error) {
@@ -479,9 +438,9 @@ class _CaptureScreenState extends State<CaptureScreen>
           species: 'cat',
           emotion: 'curious',
           healthFlags: const ['needs review'],
-          trackingSamples: trackingSamples,
           sourceLabel: sourceLabel,
           path: video.path,
+          petId: widget.petId,
         ),
       );
     } finally {
@@ -507,7 +466,6 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 
   Future<void> _setPreview(PetCaptureResult result) async {
-    await _stopPetTracking();
     await _videoController?.dispose();
     VideoPlayerController? controller;
     try {
@@ -561,13 +519,13 @@ class _CaptureScreenState extends State<CaptureScreen>
   void _setDemoPreview() {
     unawaited(
       _setPreview(
-        const PetCaptureResult(
+        PetCaptureResult(
           kind: CaptureMediaKind.demo,
           species: 'cat',
           emotion: 'distress',
           healthFlags: ['limping', 'low appetite'],
           sourceLabel: 'Demo capture',
-          petId: 'pet-02',
+          petId: widget.petId,
         ),
       ),
     );
@@ -584,7 +542,6 @@ class _CaptureScreenState extends State<CaptureScreen>
     });
     _viewModel.showCapture();
     unawaited(_applyZoom(1));
-    unawaited(_startPetTracking());
   }
 
   Future<void> _saveMoment() async {
@@ -592,7 +549,18 @@ class _CaptureScreenState extends State<CaptureScreen>
     if (preview == null || _savingMoment || _momentSaved) return;
     setState(() => _savingMoment = true);
     try {
-      await _recordPetMoment(preview);
+      if (preview.path != null) {
+        await LocalMomentStorage.instance.saveMoment(
+          sourcePath: preview.path!,
+          isVideo: preview.kind == CaptureMediaKind.video,
+        );
+      }
+      String? uploadedImagePath = preview.uploadedImagePath;
+      if (uploadedImagePath == null && preview.path != null) {
+        uploadedImagePath = await _uploadForVisualSearch(File(preview.path!));
+      }
+      final updatedPreview = preview.copyWith(uploadedImagePath: uploadedImagePath);
+      await _recordPetMoment(updatedPreview);
       if (!mounted) return;
       setState(() => _momentSaved = true);
       await _playTransition(CaptureTransitionTarget.save);
@@ -687,134 +655,6 @@ class _CaptureScreenState extends State<CaptureScreen>
     return error.toString();
   }
 
-  Future<void> _startPetTracking() async {
-    final controller = _cameraController;
-    if (controller == null ||
-        !controller.value.isInitialized ||
-        controller.value.isStreamingImages ||
-        _recording ||
-        _preview != null) {
-      return;
-    }
-    try {
-      await controller.startImageStream(_handleCameraImage);
-      if (mounted) {
-        setState(() {
-          _petTrackingIssue = null;
-        });
-      }
-    } on Object catch (error) {
-      if (mounted) {
-        setState(() {
-          _petTrackingIssue = _friendlyTrackingError(error);
-        });
-      }
-    }
-  }
-
-  Future<void> _stopPetTracking() async {
-    final controller = _cameraController;
-    if (controller == null || !controller.value.isStreamingImages) {
-      return;
-    }
-    try {
-      await controller.stopImageStream();
-    } on Object {
-      // Tracking is best effort and should never block capture.
-    } finally {
-      if (mounted && !_disposing) {
-        setState(() {
-          _detectingPetBox = false;
-          _petBox = null;
-        });
-      }
-    }
-  }
-
-  void _handleCameraImage(CameraImage image) {
-    final camera = _activeCamera;
-    if (camera == null || _detectingPetBox || _preview != null) {
-      return;
-    }
-    final generation = _trackingGeneration;
-    final recordingFrame = _recordingStopwatch.isRunning;
-    if (recordingFrame) {
-      _recordingDiagnostics = _recordingDiagnostics.copyWith(
-        frames: _recordingDiagnostics.frames + 1,
-      );
-    }
-    final now = DateTime.now();
-    final lastDetection = _lastPetBoxDetectionAt;
-    if (lastDetection != null &&
-        now.difference(lastDetection) < const Duration(milliseconds: 450)) {
-      final current = _petBoxTracker.current(now: now);
-      if (current == null && _petBox != null && mounted) {
-        setState(() => _petBox = null);
-      }
-      return;
-    }
-
-    _lastPetBoxDetectionAt = now;
-    _detectingPetBox = true;
-    unawaited(() async {
-      try {
-        final controller = _cameraController;
-        if (controller == null) return;
-        final detected = await _petBoxDetector.detect(
-          image,
-          camera,
-          deviceOrientation: controller.value.deviceOrientation,
-        );
-        if (generation != _trackingGeneration) return;
-        final current = detected == null
-            ? _petBoxTracker.current(now: DateTime.now())
-            : _petBoxTracker.update([detected], now: DateTime.now());
-        if (mounted) {
-          setState(() {
-            _petBox = current;
-            _petTrackingIssue = null;
-          });
-        }
-        if (recordingFrame && _recordingStopwatch.isRunning) {
-          if (detected != null) {
-            _recordingDiagnostics = _recordingDiagnostics.copyWith(
-              detections: _recordingDiagnostics.detections + 1,
-            );
-          }
-          final normalized = current == null
-              ? null
-              : normalizedTrackingSample(
-                  boundingBox: current.boundingBox,
-                  imageSize: current.imageSize,
-                  timestamp: _recordingStopwatch.elapsed,
-                );
-          if (normalized != null) {
-            _recordingTrackingSamples.add(normalized);
-            _recordingDiagnostics = _recordingDiagnostics.copyWith(
-              samples: _recordingDiagnostics.samples + 1,
-            );
-          }
-        }
-      } on Object catch (error) {
-        if (generation != _trackingGeneration) return;
-        if (recordingFrame) {
-          _recordingDiagnostics = _recordingDiagnostics.copyWith(
-            errors: _recordingDiagnostics.errors + 1,
-            lastError: error.toString(),
-          );
-        }
-        if (mounted) {
-          setState(() {
-            _petBox = null;
-            _petTrackingIssue = _friendlyTrackingError(error);
-          });
-        }
-      } finally {
-        _detectingPetBox = false;
-      }
-    }());
-  }
-
   Future<void> _applyZoom(double value) async {
     final controller = _cameraController;
     final nextZoom = clampZoom(value, _zoom.min, _zoom.max);
@@ -832,12 +672,6 @@ class _CaptureScreenState extends State<CaptureScreen>
       }
     });
     await _zoomRequestCoordinator!.request(nextZoom);
-  }
-
-  String _friendlyTrackingError(Object error) {
-    final text = error.toString().replaceFirst('Bad state: ', '');
-    if (text.contains('Unsupported camera frame')) return text;
-    return 'Pet tracking unavailable';
   }
 
   void _onPreviewScaleStart(ScaleStartDetails details) {
@@ -899,7 +733,6 @@ class _CaptureScreenState extends State<CaptureScreen>
                   controller: _cameraController,
                   loading: _cameraLoading,
                   error: _cameraError,
-                  petBox: _petBox,
                   onScaleStart: _onPreviewScaleStart,
                   onScaleUpdate: _onPreviewScaleUpdate,
                   onTapPreview: _onPreviewTap,
@@ -908,7 +741,6 @@ class _CaptureScreenState extends State<CaptureScreen>
                 _PreviewBackdrop(
                   result: preview,
                   videoController: _videoController,
-                  trackingMode: uiState.trackingMode,
                 ),
               const _CaptureGradient(),
               SafeArea(
@@ -930,11 +762,7 @@ class _CaptureScreenState extends State<CaptureScreen>
                                 recording: _recording,
                                 analyzing: _analyzingImage || _analyzingVideo,
                                 instructionsBright: _instructionsBright,
-                                scanningLabel:
-                                    _petTrackingIssue ??
-                                    (_petBox == null
-                                        ? 'SCANNING FOR PET'
-                                        : 'PET FOUND'),
+                                scanningLabel: 'TAP PHOTO · HOLD VIDEO',
                                 showZoomMultipliers:
                                     uiState.showZoomMultipliers,
                                 zoom: _zoom,
@@ -951,9 +779,7 @@ class _CaptureScreenState extends State<CaptureScreen>
                               )
                             : _ReplayModeUi(
                                 result: preview,
-                                trackingMode: uiState.trackingMode,
                                 saving: _savingMoment,
-                                onToggleTracking: _viewModel.toggleTrackingMode,
                                 onRetake: _retake,
                                 onSave: _saveMoment,
                                 onAskAgent: () => unawaited(_askAgent()),
@@ -1001,12 +827,11 @@ class _CaptureScreenState extends State<CaptureScreen>
     Navigator.of(context)
         .push(
           MaterialPageRoute<void>(
-            builder: (context) =>
-                PetMomentStreakScreen(
-                  streakClient: widget.streakClient,
-                  petId: widget.petId,
-                  petName: widget.petName,
-                ),
+            builder: (context) => PetMomentStreakScreen(
+              streakClient: widget.streakClient,
+              petId: widget.petId,
+              petName: widget.petName,
+            ),
           ),
         )
         .then((_) => _refreshStreak());
@@ -1022,7 +847,6 @@ class _CameraBackdrop extends StatelessWidget {
     required this.controller,
     required this.loading,
     required this.error,
-    required this.petBox,
     required this.onScaleStart,
     required this.onScaleUpdate,
     required this.onTapPreview,
@@ -1031,7 +855,6 @@ class _CameraBackdrop extends StatelessWidget {
   final CameraController? controller;
   final bool loading;
   final String? error;
-  final PetBoxCandidate? petBox;
   final GestureScaleStartCallback onScaleStart;
   final GestureScaleUpdateCallback onScaleUpdate;
   final void Function(Offset localPosition, Size previewSize) onTapPreview;
@@ -1043,9 +866,6 @@ class _CameraBackdrop extends StatelessWidget {
       return LayoutBuilder(
         builder: (context, constraints) {
           final previewSize = Size(constraints.maxWidth, constraints.maxHeight);
-          final cameraAspectRatio = camera.value.aspectRatio;
-          final isLandscape = cameraAspectRatio > 1;
-          final portraitRatio = isLandscape ? (1 / cameraAspectRatio) : cameraAspectRatio;
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onScaleStart: onScaleStart,
@@ -1055,32 +875,10 @@ class _CameraBackdrop extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                SizedBox.expand(
-                  child: ClipRect(
-                    child: FittedBox(
-                      fit: BoxFit.cover,
-                      child: isLandscape
-                        ? RotatedBox(
-                            quarterTurns: 3, 
-                            child: SizedBox(
-                              width: constraints.maxWidth / portraitRatio,
-                              height: constraints.maxWidth,
-                              child: CameraPreview(camera),
-                            ),
-                          )
-                        : RotatedBox(
-                            quarterTurns: 1, 
-                            child: SizedBox(
-                              width: constraints.maxWidth, 
-                              height: constraints.maxWidth / portraitRatio, 
-                              child: CameraPreview(camera),
-                            ),
-                          ),
-                    ),
-                  ),
+                CameraPreviewCover(
+                  sensorAspectRatio: camera.value.aspectRatio,
+                  preview: CameraPreview(camera),
                 ),
-                if (petBox != null)
-                  CustomPaint(painter: _PetBoxPainter(candidate: petBox!)),
               ],
             ),
           );
@@ -1126,74 +924,11 @@ class _CameraBackdrop extends StatelessWidget {
   }
 }
 
-class _PetBoxPainter extends CustomPainter {
-  const _PetBoxPainter({required this.candidate});
-
-  final PetBoxCandidate candidate;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = coverMappedRect(
-      sourceRect: candidate.boundingBox,
-      sourceSize: candidate.imageSize,
-      outputSize: size,
-    );
-    final borderPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.4
-      ..color = candidate.isCat ? PetTheme.aqua : PetTheme.warning;
-    final fillPaint = Paint()
-      ..style = PaintingStyle.fill
-      ..color = const Color(0xAA000000);
-    final labelStyle = TextStyle(
-      color: candidate.isCat ? PetTheme.aqua : PetTheme.warning,
-      fontSize: 12,
-      fontWeight: FontWeight.w800,
-      letterSpacing: 0,
-    );
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(rect, const Radius.circular(8)),
-      borderPaint,
-    );
-
-    final label = candidate.confidence > 0
-        ? '${candidate.label} ${(candidate.confidence * 100).round()}%'
-        : candidate.label;
-    final textPainter = TextPainter(
-      text: TextSpan(text: label, style: labelStyle),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-    )..layout(maxWidth: size.width - 32);
-    final labelRect = Rect.fromLTWH(
-      rect.left,
-      (rect.top - textPainter.height - 8).clamp(12.0, size.height - 32),
-      textPainter.width + 16,
-      textPainter.height + 8,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(labelRect, const Radius.circular(8)),
-      fillPaint,
-    );
-    textPainter.paint(canvas, Offset(labelRect.left + 8, labelRect.top + 4));
-  }
-
-  @override
-  bool shouldRepaint(covariant _PetBoxPainter oldDelegate) {
-    return oldDelegate.candidate != candidate;
-  }
-}
-
 class _PreviewBackdrop extends StatefulWidget {
-  const _PreviewBackdrop({
-    required this.result,
-    required this.videoController,
-    required this.trackingMode,
-  });
+  const _PreviewBackdrop({required this.result, required this.videoController});
 
   final PetCaptureResult result;
   final VideoPlayerController? videoController;
-  final bool trackingMode;
 
   @override
   State<_PreviewBackdrop> createState() => _PreviewBackdropState();
@@ -1223,20 +958,14 @@ class _PreviewBackdropState extends State<_PreviewBackdrop> {
   }
 
   Widget _buildVideoBackdrop(VideoPlayerController controller) {
-    return ValueListenableBuilder<VideoPlayerValue>(
-      valueListenable: controller,
-      builder: (context, value, _) {
-        final sample = widget.trackingMode
-            ? trackingSampleAt(widget.result.trackingSamples, value.position)
-            : null;
-        return ReplayTrackingViewport(
-          sourceSize: value.size,
-          normalizedBoundingBox: sample?.normalizedBoundingBox,
-          label:
-              '${widget.result.species.toUpperCase()} / ${widget.result.emotion.toUpperCase()}',
-          media: VideoPlayer(controller),
-        );
-      },
+    return FittedBox(
+      fit: BoxFit.cover,
+      clipBehavior: Clip.hardEdge,
+      child: SizedBox(
+        width: controller.value.size.width,
+        height: controller.value.size.height,
+        child: VideoPlayer(controller),
+      ),
     );
   }
 
@@ -1895,29 +1624,20 @@ class _LivePetIndicatorState extends State<_LivePetIndicator>
 class _ReplayModeUi extends StatelessWidget {
   const _ReplayModeUi({
     required this.result,
-    required this.trackingMode,
     required this.saving,
-    required this.onToggleTracking,
     required this.onRetake,
     required this.onSave,
     required this.onAskAgent,
   });
 
   final PetCaptureResult result;
-  final bool trackingMode;
   final bool saving;
-  final VoidCallback onToggleTracking;
   final VoidCallback onRetake;
   final VoidCallback onSave;
   final VoidCallback onAskAgent;
 
   @override
   Widget build(BuildContext context) {
-    final trackingAvailable =
-        result.kind == CaptureMediaKind.video && result.trackingSamples.isNotEmpty;
-    final trackingMessage = result.kind == CaptureMediaKind.video
-        ? 'No pet was tracked during this recording.'
-        : 'Tracking is available for newly recorded videos.';
     return LayoutBuilder(
       builder: (context, constraints) {
         return Column(
@@ -1939,40 +1659,6 @@ class _ReplayModeUi extends StatelessWidget {
               ],
             ),
             const Spacer(),
-            Tooltip(
-              message: trackingAvailable
-                  ? 'Auto-frame the detected pet'
-                  : trackingMessage,
-              child: OutlinedButton.icon(
-                key: const Key('tracking-mode-toggle'),
-                onPressed: trackingAvailable ? onToggleTracking : null,
-                icon: Icon(
-                  trackingMode
-                      ? Icons.center_focus_strong
-                      : Icons.center_focus_weak,
-                ),
-                label: Text(
-                  trackingAvailable
-                      ? trackingMode
-                            ? 'Tracking Mode On'
-                            : 'Tracking Mode'
-                      : 'Tracking Unavailable',
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: trackingMode
-                      ? const Color(0xFF47E46A)
-                      : PetTheme.ivory,
-                  disabledForegroundColor: PetTheme.muted,
-                  backgroundColor: const Color(0x66000000),
-                  side: BorderSide(
-                    color: trackingMode
-                        ? const Color(0xFF47E46A)
-                        : const Color(0x80FFFFFF),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
             _PreviewActions(
               saving: saving,
               onRetake: onRetake,
@@ -2197,36 +1883,3 @@ class _RoundIconButton extends StatelessWidget {
 }
 
 enum _GalleryMediaType { image, video }
-
-@immutable
-class _RecordingTrackingDiagnostics {
-  const _RecordingTrackingDiagnostics({
-    this.frames = 0,
-    this.detections = 0,
-    this.samples = 0,
-    this.errors = 0,
-    this.lastError,
-  });
-
-  final int frames;
-  final int detections;
-  final int samples;
-  final int errors;
-  final String? lastError;
-
-  _RecordingTrackingDiagnostics copyWith({
-    int? frames,
-    int? detections,
-    int? samples,
-    int? errors,
-    String? lastError,
-  }) {
-    return _RecordingTrackingDiagnostics(
-      frames: frames ?? this.frames,
-      detections: detections ?? this.detections,
-      samples: samples ?? this.samples,
-      errors: errors ?? this.errors,
-      lastError: lastError ?? this.lastError,
-    );
-  }
-}

@@ -12,7 +12,7 @@ PetRoomPetState petState(IsometricHomeViewModel viewModel, String petId) {
 PetRoomPetState _makePet(String id, String name) {
   return PetRoomPetState(
     id: id,
-    stats: PetStats(name: name, species: 'Cat', emotion: 'Sleepy'),
+    stats: PetStats(name: name, species: 'Cat', mood: 'Sleepy'),
     activeAction: standbyActionById(PetStandbyActionId.sleepAndWake),
     normalizedPosition: const Offset(0.54, 0.72),
   );

@@ -76,28 +76,3 @@ double cameraCoverAspectRatio({
 }) {
   return isPortraitLayout ? 1 / sensorAspectRatio : sensorAspectRatio;
 }
-
-double autoTrackingZoom({
-  required double currentZoom,
-  required double boxAreaFraction,
-  required double minZoom,
-  required double maxZoom,
-  double targetAreaFraction = 0.28,
-  double smoothing = 0.22,
-  double deadband = 0.04,
-  double maxAutoZoom = 3,
-}) {
-  if (boxAreaFraction <= 0) return currentZoom;
-  if ((boxAreaFraction - targetAreaFraction).abs() <= deadband) {
-    return currentZoom;
-  }
-  final areaRatio = (targetAreaFraction / boxAreaFraction).clamp(0.25, 4.0);
-  final desired = currentZoom * math.sqrt(areaRatio);
-  final upperBound = maxZoom < maxAutoZoom ? maxZoom : maxAutoZoom;
-  final clamped = clampZoom(desired, minZoom, upperBound);
-  return clampZoom(
-    currentZoom + (clamped - currentZoom) * smoothing,
-    minZoom,
-    upperBound,
-  );
-}
