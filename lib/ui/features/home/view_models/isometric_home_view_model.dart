@@ -110,41 +110,16 @@ const List<PetStandbyAction> petStandbyActions = [
   ),
 ];
 
-const String primaryPetId = 'mochi';
-const String secondaryPetId = 'luna';
-
-const PetStats defaultPrimaryPetStats = PetStats(
-  name: 'Mochi',
-  species: 'Cat',
-  emotion: 'Sleepy',
-  breed: 'Domestic Shorthair',
-  weightKg: 4.2,
-  lifeStage: 'Adult',
-  knownConditions: 'None',
-  deliveryAddress: '123 Pet Street, NY 10001',
-  preferredClinic: 'Happy Paws Vet Clinic',
-  preferredFoodBrand: 'Whiskas',
-);
-
-const PetStats defaultSecondaryPetStats = PetStats(
-  name: 'Luna',
-  species: 'Cat',
-  emotion: 'Curious',
-  breed: 'Persian',
-  weightKg: 3.8,
-  lifeStage: 'Kitten',
-  knownConditions: 'None',
-  deliveryAddress: '123 Pet Street, NY 10001',
-  preferredClinic: 'Happy Paws Vet Clinic',
-  preferredFoodBrand: 'Royal Canin',
-);
-
 const double petFloorMinX = 0.32;
 const double petFloorMaxX = 0.74;
 const double petFloorMinY = 0.59;
 const double petFloorMaxY = 0.82;
-const Offset initialPetPosition = Offset(0.54, 0.72);
-const Offset initialSecondaryPetPosition = Offset(0.66, 0.66);
+final List<Offset> _petPositions = const [
+  Offset(0.50, 0.74),
+  Offset(0.66, 0.66),
+  Offset(0.38, 0.64),
+  Offset(0.58, 0.58),
+];
 
 IsometricRoomAssets roomAssetsFor(DateTime localTime) {
   final hour = localTime.hour;
@@ -179,22 +154,7 @@ class IsometricHomeViewModel extends ChangeNotifier {
        _random = random ?? Random(),
        _state = PetRoomState(
          roomAssets: currentRoomAssets(clock: clock),
-         pets: List.unmodifiable([
-           PetRoomPetState(
-             id: primaryPetId,
-             stats: defaultPrimaryPetStats,
-             activeAction: standbyActionById(
-               PetStandbyActionId.sleepAndWake,
-             ),
-             normalizedPosition: initialPetPosition,
-           ),
-           PetRoomPetState(
-             id: secondaryPetId,
-             stats: defaultSecondaryPetStats,
-             activeAction: standbyActionById(PetStandbyActionId.sitAndLick),
-             normalizedPosition: initialSecondaryPetPosition,
-           ),
-         ]),
+         pets: const [],
        );
 
   final DeviceClock _clock;
@@ -204,7 +164,48 @@ class IsometricHomeViewModel extends ChangeNotifier {
   final Map<String, Timer> _standbyTimers = {};
   final Map<String, PetStandbyActionId> _forcedNextActions = {};
   bool _isStandbyRunning = false;
+  bool _petsLoaded = false;
   PetRoomState _state;
+
+  Future<void> loadPets() async {
+    final c = client;
+    if (c == null) return;
+    try {
+      final petList = await c.fetchPetProfiles();
+      if (petList.isEmpty) return;
+
+      final petStates = <PetRoomPetState>[];
+      for (var i = 0; i < petList.length; i++) {
+        final p = petList[i];
+        final petId = p['pet_id']?.toString() ?? '';
+        if (petId.isEmpty) continue;
+        final position = i < _petPositions.length
+            ? _petPositions[i]
+            : Offset(0.54, 0.72);
+        petStates.add(PetRoomPetState(
+          id: petId,
+          stats: PetStats(
+            name: p['name']?.toString() ?? 'Pet ${i + 1}',
+            species: p['species']?.toString() ?? '',
+            emotion: 'Sleepy',
+          ),
+          activeAction: standbyActionById(PetStandbyActionId.sleepAndWake),
+          normalizedPosition: position,
+        ));
+      }
+
+      if (petStates.isEmpty) return;
+      _state = _state.copyWith(pets: List.unmodifiable(petStates));
+      _petsLoaded = true;
+      notifyListeners();
+
+      for (final pet in petStates) {
+        loadPetProfile(pet.id);
+      }
+    } on AgentConnectionException {
+      // Backend unavailable.
+    }
+  }
 
   Future<void> loadPetProfile(String petId) async {
     final c = client;
@@ -234,7 +235,7 @@ class IsometricHomeViewModel extends ChangeNotifier {
       _state = _state.copyWith(pets: List.unmodifiable(pets));
       notifyListeners();
     } on AgentConnectionException {
-      // Backend unavailable — keep using default stats.
+      // Backend unavailable.
     }
   }
 
@@ -274,11 +275,19 @@ class IsometricHomeViewModel extends ChangeNotifier {
   void startStandby() {
     if (_isStandbyRunning) return;
     _isStandbyRunning = true;
-    for (final pet in _state.pets) {
-      _scheduleNextAction(pet.id);
-      loadPetProfile(pet.id);
+    if (!_petsLoaded) {
+      loadPets().then((_) {
+        for (final pet in _state.pets) {
+          _scheduleNextAction(pet.id);
+        }
+        triggerWelcome();
+      });
+    } else {
+      for (final pet in _state.pets) {
+        _scheduleNextAction(pet.id);
+      }
+      triggerWelcome();
     }
-    triggerWelcome();
   }
 
   void pauseStandby() {
@@ -295,7 +304,9 @@ class IsometricHomeViewModel extends ChangeNotifier {
   }
 
   void advanceStandby() {
-    advancePetStandby(primaryPetId);
+    if (_state.pets.isNotEmpty) {
+      advancePetStandby(_state.pets.first.id);
+    }
   }
 
   void advancePetStandby(String petId) {

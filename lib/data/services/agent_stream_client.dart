@@ -229,6 +229,9 @@ abstract class AgentStreamClient {
 
   /// Fetch a pet's profile from the backend.
   Future<Map<String, dynamic>?> fetchPetProfile(String petId);
+
+  /// List all registered pets (pet_id, name, species).
+  Future<List<Map<String, dynamic>>> fetchPetProfiles();
 }
 
 class AgentApiClient implements AgentStreamClient {
@@ -413,6 +416,32 @@ class AgentApiClient implements AgentStreamClient {
           content: item['content']?.toString() ?? '',
         );
       }).toList();
+    } on SocketException catch (error) {
+      throw AgentConnectionException('Could not connect to $uri: $error');
+    } finally {
+      client.close();
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchPetProfiles() async {
+    final uri = baseUri.resolve('/pet-profiles');
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 8);
+    try {
+      final request = await client.getUrl(uri);
+      request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw AgentConnectionException(
+          'Failed to fetch pet profiles (${response.statusCode}): $body',
+        );
+      }
+      final decoded = jsonDecode(body);
+      final list = (decoded is Map ? decoded['pets'] : null) as List?;
+      if (list == null) return [];
+      return list.cast<Map<String, dynamic>>();
     } on SocketException catch (error) {
       throw AgentConnectionException('Could not connect to $uri: $error');
     } finally {
