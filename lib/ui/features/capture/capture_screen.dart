@@ -410,6 +410,7 @@ class _CaptureScreenState extends State<CaptureScreen>
             sourceLabel: sourceLabel,
             path: image.path,
             uploadedImagePath: uploadedImagePath,
+            petId: widget.petId,
           ),
         );
       } on Object catch (error) {
@@ -431,6 +432,7 @@ class _CaptureScreenState extends State<CaptureScreen>
             sourceLabel: sourceLabel,
             path: image.path,
             uploadedImagePath: uploadedImagePath,
+            petId: widget.petId,
           ),
         );
       }
@@ -463,6 +465,7 @@ class _CaptureScreenState extends State<CaptureScreen>
           healthFlags: const [],
           sourceLabel: sourceLabel,
           path: video.path,
+          petId: widget.petId,
         ),
       );
     } on Object catch (error) {
@@ -483,6 +486,7 @@ class _CaptureScreenState extends State<CaptureScreen>
           trackingSamples: trackingSamples,
           sourceLabel: sourceLabel,
           path: video.path,
+          petId: widget.petId,
         ),
       );
     } finally {
@@ -562,13 +566,13 @@ class _CaptureScreenState extends State<CaptureScreen>
   void _setDemoPreview() {
     unawaited(
       _setPreview(
-        const PetCaptureResult(
+        PetCaptureResult(
           kind: CaptureMediaKind.demo,
           species: 'cat',
           emotion: 'distress',
           healthFlags: ['limping', 'low appetite'],
           sourceLabel: 'Demo capture',
-          petId: 'pet-02',
+          petId: widget.petId,
         ),
       ),
     );
