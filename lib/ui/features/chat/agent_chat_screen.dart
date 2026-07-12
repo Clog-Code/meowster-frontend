@@ -22,6 +22,7 @@ class AgentChatScreen extends StatefulWidget {
   const AgentChatScreen({
     required this.client,
     this.initialCapture,
+    this.initialCaptureCountsTowardStreak = true,
     this.initialThreadId,
     this.ownerProfile,
     this.streakClient = const EmptyPetStreakClient(),
@@ -35,6 +36,7 @@ class AgentChatScreen extends StatefulWidget {
 
   final AgentStreamClient client;
   final PetCaptureResult? initialCapture;
+  final bool initialCaptureCountsTowardStreak;
   final String? initialThreadId;
   final OwnerProfile? ownerProfile;
   final PetStreakClient streakClient;
@@ -110,7 +112,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     final capture = widget.initialCapture;
     if (capture != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _sendPerception(capture);
+        _sendInitialCapture(capture);
       });
     }
   }
@@ -177,9 +179,8 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     unawaited(_loadHistory());
   }
 
-  Future<void> _sendPerception(PetCaptureResult capture) async {
+  Future<void> _sendInitialCapture(PetCaptureResult capture) async {
     if (_isSending) return;
-    final payload = capture.toPerceptionPayload(_threadId);
     final userMessage = ChatMessage(
       id: _newId(),
       role: ChatRole.user,
@@ -193,7 +194,23 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
       _isSending = true;
     });
     _scrollToBottom();
-    await _consume(path: '/perception', payload: payload);
+    if (widget.initialCaptureCountsTowardStreak) {
+      await _consume(
+        path: '/perception',
+        payload: capture.toPerceptionPayload(_threadId),
+      );
+      return;
+    }
+    await _consume(
+      path: '/agent',
+      payload: buildRunAgentInput(
+        threadId: _threadId,
+        runId: _newId(),
+        messages: _messages,
+        state: _buildAgentState(),
+        context: _buildAgentContext(),
+      ),
+    );
   }
 
   Future<void> _sendChat(String text) async {

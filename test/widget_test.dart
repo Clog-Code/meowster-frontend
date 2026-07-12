@@ -541,7 +541,7 @@ void main() {
     expect(find.text('July 2026'), findsOneWidget);
   });
 
-  testWidgets('demo capture transitions to chat and sends perception', (
+  testWidgets('demo capture confirms a non-streak agent review', (
     tester,
   ) async {
     final client = FakeAgentClient();
@@ -557,16 +557,20 @@ void main() {
     ];
 
     await tester.pumpWidget(
-      PetAgentApp(
-        client: client,
-        streakClient: FakeStreakClient(),
-        textToSpeechService: FakeTextToSpeechService(),
-        autoReadPreferenceStore: FakeAutoReadPreferenceStore(enabled: false),
-        enableCamera: false,
+      MaterialApp(
+        theme: PetTheme.dark(),
+        home: CaptureScreen(
+          client: client,
+          streakClient: FakeStreakClient(),
+          petId: 'pet-01',
+          petName: 'Mochi',
+          textToSpeechService: FakeTextToSpeechService(),
+          autoReadPreferenceStore: FakeAutoReadPreferenceStore(enabled: false),
+          enableCamera: false,
+        ),
       ),
     );
-    await tester.pump();
-    await openCameraFromHome(tester);
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('Demo capture'));
     await tester.pumpAndSettle();
@@ -577,9 +581,16 @@ void main() {
     await tester.tap(find.text('Ask Agent'));
     await tester.pumpAndSettle();
 
-    expect(client.paths, contains('/perception'));
-    expect(client.payloads.last['species'], 'cat');
-    expect(client.payloads.last['pet_profile'], isA<Map<String, dynamic>>());
+    expect(
+      find.text('Demo capture will not be count as a streak'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+
+    expect(client.paths, contains('/agent'));
+    expect(client.paths, isNot(contains('/perception')));
+    expect(client.payloads.last['messages'], isA<List<dynamic>>());
     expect(
       find.textContaining('[perception-event]', findRichText: true),
       findsNothing,
@@ -594,18 +605,22 @@ void main() {
     );
   });
 
-  testWidgets('preview can save moment without opening chat', (tester) async {
+  testWidgets('demo preview cannot save a streak moment', (tester) async {
     final client = FakeAgentClient();
 
     await tester.pumpWidget(
-      PetAgentApp(
-        client: client,
-        streakClient: FakeStreakClient(),
-        enableCamera: false,
+      MaterialApp(
+        theme: PetTheme.dark(),
+        home: CaptureScreen(
+          client: client,
+          streakClient: FakeStreakClient(),
+          petId: 'pet-01',
+          petName: 'Mochi',
+          enableCamera: false,
+        ),
       ),
     );
     await tester.pumpAndSettle();
-    await openCameraFromHome(tester);
 
     await tester.tap(find.byTooltip('Demo capture'));
     await tester.pumpAndSettle();
@@ -620,13 +635,46 @@ void main() {
     );
     expect(client.paths, isEmpty);
 
-    await tester.tap(find.text('Save Moment'));
+    final saveButton = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, 'Save Moment'),
+    );
+    expect(saveButton.onPressed, isNull);
+    expect(
+      find.byTooltip('Demo captures cannot be saved as pet moments'),
+      findsOneWidget,
+    );
+
+    expect(client.paths, isEmpty);
+    expect(find.text('DISTRESS'), findsOneWidget);
+    expect(find.byType(AgentChatScreen), findsNothing);
+  });
+
+  testWidgets('demo Ask Agent confirmation can be cancelled', (tester) async {
+    final client = FakeAgentClient();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: PetTheme.dark(),
+        home: CaptureScreen(
+          client: client,
+          streakClient: FakeStreakClient(),
+          petId: 'pet-01',
+          petName: 'Mochi',
+          enableCamera: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Demo capture'));
     await tester.pumpAndSettle();
 
-    expect(client.paths, ['/perception']);
-    expect(client.payloads.single['emotion'], 'distress');
-    expect(find.text('Capture The Meowment'), findsOneWidget);
-    expect(find.text('TAP PHOTO · HOLD VIDEO'), findsOneWidget);
+    await tester.tap(find.text('Ask Agent'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(client.paths, isEmpty);
+    expect(find.text('DISTRESS'), findsOneWidget);
     expect(find.byType(AgentChatScreen), findsNothing);
   });
 
@@ -690,6 +738,37 @@ void main() {
       find.textContaining('cat appears surprised', findRichText: true),
       findsOneWidget,
     );
+  });
+
+  testWidgets('non-streak initial capture uses the agent endpoint', (
+    tester,
+  ) async {
+    final client = FakeAgentClient();
+    const capture = PetCaptureResult(
+      kind: CaptureMediaKind.demo,
+      species: 'cat',
+      emotion: 'distress',
+      healthFlags: ['limping'],
+      sourceLabel: 'Demo capture',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: PetTheme.dark(),
+        home: AgentChatScreen(
+          client: client,
+          initialCapture: capture,
+          initialCaptureCountsTowardStreak: false,
+          textToSpeechService: FakeTextToSpeechService(),
+          autoReadPreferenceStore: FakeAutoReadPreferenceStore(enabled: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(client.paths, ['/agent']);
+    expect(client.paths, isNot(contains('/perception')));
+    expect(find.textContaining('cat appears distress'), findsOneWidget);
   });
 
   testWidgets('user messages render with the user bubble renderer', (

@@ -304,7 +304,6 @@ class _ListeningPlaceholder extends StatelessWidget {
   }
 }
 
-
 class _TypingComposer extends StatelessWidget {
   const _TypingComposer({
     required this.controller,
@@ -339,7 +338,7 @@ class _TypingComposer extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: _AttachmentPreview(
-              imagePath: pendingImagePath!,
+              mediaPath: pendingImagePath!,
               isUploading: isUploadingImage,
               onRemove: onRemoveAttachment,
             ),
@@ -399,18 +398,18 @@ class _TypingComposer extends StatelessWidget {
 }
 
 /// Small thumbnail chip shown above the text field once the user has
-/// attached a photo from the gallery. Purely a preview — the actual
-/// upload happens as soon as the photo is picked (see
+/// attached local media. Purely a preview — the actual upload happens as
+/// soon as the media is picked (see
 /// AgentChatScreen._pickAttachment), so by the time the message is sent
 /// the server-side path is already known.
 class _AttachmentPreview extends StatelessWidget {
   const _AttachmentPreview({
-    required this.imagePath,
+    required this.mediaPath,
     required this.isUploading,
     this.onRemove,
   });
 
-  final String imagePath;
+  final String mediaPath;
   final bool isUploading;
   final VoidCallback? onRemove;
 
@@ -431,12 +430,16 @@ class _AttachmentPreview extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(6),
-                child: Image.file(
-                  File(imagePath),
-                  width: 48,
-                  height: 48,
-                  fit: BoxFit.cover,
+                child: SizedBox.square(
+                  key: const ValueKey('attachment-thumbnail'),
+                  dimension: 48,
+                  child: _ThumbnailImage(mediaPath: mediaPath),
                 ),
+              ),
+              const Positioned(
+                top: 2,
+                right: 2,
+                child: Icon(Icons.pets, size: 16, color: PetTheme.ivory),
               ),
               if (isUploading)
                 Container(
@@ -457,18 +460,45 @@ class _AttachmentPreview extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(
-            isUploading ? 'Attaching photo…' : 'Photo attached',
+            isUploading ? 'Attaching…' : 'Attached',
             style: TextStyle(color: PetTheme.muted, fontSize: 13),
           ),
           if (onRemove != null)
             IconButton(
-              tooltip: 'Remove photo',
+              tooltip: 'Remove',
               iconSize: 18,
               visualDensity: VisualDensity.compact,
               onPressed: onRemove,
               icon: const Icon(Icons.close),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _ThumbnailImage extends StatelessWidget {
+  const _ThumbnailImage({required this.mediaPath});
+
+  final String mediaPath;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.file(
+      File(mediaPath),
+      key: const ValueKey('attachment-photo-thumbnail'),
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF17333A), Color(0xFF26303A)],
+          ),
+        ),
+        child: const Center(
+          child: Icon(Icons.pets, color: PetTheme.ivory, size: 23),
+        ),
       ),
     );
   }
@@ -663,7 +693,18 @@ class VoiceWaveform extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final normalized = level.clamp(0.0, 1.0);
-    const basePattern = [0.35, 0.6, 0.85, 0.5, 1.0, 0.72, 0.42, 0.9, 0.58, 0.76];
+    const basePattern = [
+      0.35,
+      0.6,
+      0.85,
+      0.5,
+      1.0,
+      0.72,
+      0.42,
+      0.9,
+      0.58,
+      0.76,
+    ];
     final pattern = List.generate(
       barCount,
       (i) => basePattern[i % basePattern.length],

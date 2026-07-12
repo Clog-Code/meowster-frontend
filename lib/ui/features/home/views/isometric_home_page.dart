@@ -50,7 +50,8 @@ class _IsometricHomePageState extends State<IsometricHomePage>
   void initState() {
     super.initState();
     _ownsViewModel = widget.viewModel == null;
-    _viewModel = widget.viewModel ??
+    _viewModel =
+        widget.viewModel ??
         IsometricHomeViewModel(
           client: widget.client,
           streakClient: widget.streakClient,
@@ -79,8 +80,8 @@ class _IsometricHomePageState extends State<IsometricHomePage>
   }
 
   Future<void> _openStreakScreen() async {
-    final selectedPet = _viewModel.state.selectedPet ??
-        _viewModel.state.pets.firstOrNull;
+    final selectedPet =
+        _viewModel.state.selectedPet ?? _viewModel.state.pets.firstOrNull;
     final petId = selectedPet?.id ?? 'pet-01';
     final petName = selectedPet?.stats.name ?? 'Pet';
     await _openDestination(
@@ -106,7 +107,9 @@ class _IsometricHomePageState extends State<IsometricHomePage>
         await widget.client!.createPetProfile(result);
         _viewModel.resumeStandby();
       } catch (e) {
-        messenger.showSnackBar(SnackBar(content: Text('Failed to add pet: $e')));
+        messenger.showSnackBar(
+          SnackBar(content: Text('Failed to add pet: $e')),
+        );
       }
     }
   }
@@ -150,21 +153,20 @@ class _IsometricHomePageState extends State<IsometricHomePage>
                 onPetTap: _viewModel.togglePetStats,
                 onTapBlank: _viewModel.clearSelection,
                 onOpenCamera: () {
-                  final selectedPet = _viewModel.state.selectedPet ??
+                  final selectedPet =
+                      _viewModel.state.selectedPet ??
                       _viewModel.state.pets.firstOrNull;
                   final petId = selectedPet?.id ?? 'pet-01';
                   final petName = selectedPet?.stats.name ?? 'Pet';
                   _openDestination(
-                    (context) => widget.captureScreenBuilder(
-                      context,
-                      petId,
-                      petName,
-                    ),
+                    (context) =>
+                        widget.captureScreenBuilder(context, petId, petName),
                   );
                 },
                 onOpenStreaks: _openStreakScreen,
-                onOpenChat: () =>
-                    _openDestination((ctx) => widget.chatScreenBuilder(ctx, _ownerProfile)),
+                onOpenChat: () => _openDestination(
+                  (ctx) => widget.chatScreenBuilder(ctx, _ownerProfile),
+                ),
                 onAddPet: _showAddPetModal,
                 onOpenProfile: _showProfileDialog,
                 streakCount: _viewModel.currentStreak,
@@ -277,9 +279,12 @@ class _PetRoomScene extends StatelessWidget {
                     ? _GlassCommandButton(
                         tooltip: 'Open pet moment streak calendar',
                         icon: Icons.local_fire_department_rounded,
-                        label: '$streakCount Streak${streakCount! >=1 ? 's' : ''}',
+                        label:
+                            '$streakCount Streak${streakCount! >= 1 ? 's' : ''}',
                         onPressed: onOpenStreaks,
-                        iconColor: streakCount! > 0 ? PetTheme.coral : PetTheme.muted,
+                        iconColor: streakCount! > 0
+                            ? PetTheme.coral
+                            : PetTheme.muted,
                       )
                     : const SizedBox.shrink(),
               ),
@@ -665,18 +670,22 @@ class _AddPetDialog extends StatefulWidget {
 }
 
 class _AddPetDialogState extends State<_AddPetDialog> {
+  static const _speciesOptions = ['Cat', 'Dog', 'Bird', 'Other'];
+  static const _lifeStageOptions = ['Baby', 'Young', 'Adult', 'Senior'];
+
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
-  final _speciesCtrl = TextEditingController(text: 'Cat');
+  final _customSpeciesCtrl = TextEditingController();
   final _breedCtrl = TextEditingController();
   final _weightCtrl = TextEditingController();
-  final _lifeStageCtrl = TextEditingController();
   final _conditionsCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
   final _clinicCtrl = TextEditingController();
   final _foodBrandCtrl = TextEditingController();
   final _picker = ImagePicker();
 
+  String _selectedSpecies = 'Cat';
+  String? _selectedLifeStage;
   File? _photoFile;
   String? _uploadedImagePath;
   bool _detailsExpanded = false;
@@ -685,10 +694,9 @@ class _AddPetDialogState extends State<_AddPetDialog> {
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _speciesCtrl.dispose();
+    _customSpeciesCtrl.dispose();
     _breedCtrl.dispose();
     _weightCtrl.dispose();
-    _lifeStageCtrl.dispose();
     _conditionsCtrl.dispose();
     _addressCtrl.dispose();
     _clinicCtrl.dispose();
@@ -697,428 +705,839 @@ class _AddPetDialogState extends State<_AddPetDialog> {
   }
 
   Future<void> _pickPhoto() async {
+    if (_isUploading) return;
     final file = await _picker.pickImage(source: ImageSource.gallery);
-    if (file == null) return;
-    setState(() => _photoFile = File(file.path));
+    if (file == null || !mounted) return;
+    setState(() {
+      _photoFile = File(file.path);
+      _uploadedImagePath = null;
+    });
+  }
+
+  void _removePhoto() {
+    if (_isUploading) return;
+    setState(() {
+      _photoFile = null;
+      _uploadedImagePath = null;
+    });
+  }
+
+  String? _requiredName(String? value) {
+    if (value == null || value.trim().isEmpty) return 'Enter your pet\'s name';
+    return null;
+  }
+
+  String? _customSpeciesValidator(String? value) {
+    if (_selectedSpecies == 'Other' &&
+        (value == null || value.trim().isEmpty)) {
+      return 'Tell us the species';
+    }
+    return null;
+  }
+
+  String? _weightValidator(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return null;
+    final weight = double.tryParse(text);
+    if (weight == null || weight <= 0) {
+      return 'Enter a valid weight';
+    }
+    return null;
+  }
+
+  String get _resolvedSpecies {
+    if (_selectedSpecies == 'Other') {
+      return _customSpeciesCtrl.text.trim();
+    }
+    return _selectedSpecies;
+  }
+
+  void _putOptional(Map<String, String> data, String key, String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isNotEmpty) data[key] = trimmed;
+  }
+
+  Future<void> _submit() async {
+    if (_isUploading || !_formKey.currentState!.validate()) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    if (_photoFile != null) {
+      setState(() => _isUploading = true);
+      try {
+        final uploaded = await widget.client.uploadMedia(_photoFile!);
+        _uploadedImagePath = uploaded.path;
+      } on MediaUploadException {
+        if (!mounted) return;
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Photo upload failed. Try again.')),
+        );
+        setState(() => _isUploading = false);
+        return;
+      }
+    }
+
+    final data = <String, String>{
+      'pet_id': DateTime.now().microsecondsSinceEpoch.toString(),
+      'name': _nameCtrl.text.trim(),
+      'species': _resolvedSpecies,
+    };
+    _putOptional(data, 'breed', _breedCtrl.text);
+    _putOptional(data, 'weight_kg', _weightCtrl.text);
+    _putOptional(data, 'life_stage', _selectedLifeStage);
+    _putOptional(data, 'known_conditions', _conditionsCtrl.text);
+    _putOptional(data, 'delivery_address', _addressCtrl.text);
+    _putOptional(data, 'preferred_clinic', _clinicCtrl.text);
+    _putOptional(data, 'preferred_food_brand', _foodBrandCtrl.text);
+    _putOptional(data, 'image_path', _uploadedImagePath);
+
+    if (mounted) navigator.pop(data);
   }
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: AlertDialog(
-          backgroundColor: const Color(0xCC171B22),
-          surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: Color(0x44FFFFFF)),
-          ),
-          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-          contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-          actionsPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: PetTheme.sage.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
+    final media = MediaQuery.of(context);
+    final isWide = media.size.width >= 600;
+    final availableHeight = math.max(
+      220.0,
+      media.size.height - media.viewInsets.bottom - 48,
+    );
+
+    return Dialog(
+        key: const Key('add-pet-dialog'),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        backgroundColor: Colors.transparent,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Material(
+              color: const Color(0xF2171B22),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 560,
+                  maxHeight: availableHeight,
                 ),
-                child: const Icon(Icons.pets, color: PetTheme.sage, size: 20),
-              ),
-              const SizedBox(width: 10),
-              const Text(
-                'Add New Pet',
-                style: TextStyle(
-                  color: PetTheme.ivory,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 420),
-            child: SizedBox(
-              width: double.maxFinite,
-              child: SingleChildScrollView(
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _field('Name', _nameCtrl, autoFocus: true),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(child: _field('Species', _speciesCtrl)),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      GestureDetector(
-                        onTap: _pickPhoto,
-                        child: Container(
-                          height: 80,
-                          decoration: BoxDecoration(
-                            color: PetTheme.panelSoft,
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(color: const Color(0x33FFFFFF)),
-                            image: _photoFile != null
-                                ? DecorationImage(
-                                    image: FileImage(_photoFile!),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                          ),
-                          child: _photoFile == null
-                              ? const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.camera_alt_outlined,
-                                      color: PetTheme.muted,
-                                      size: 20,
-                                    ),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'Upload photo',
-                                      style: TextStyle(
-                                        color: PetTheme.muted,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              : Stack(
-                                  alignment: Alignment.topRight,
-                                  children: [
-                                    const SizedBox.expand(),
-                                    Padding(
-                                      padding: const EdgeInsets.all(6),
-                                      child: GestureDetector(
-                                        onTap: () =>
-                                            setState(() => _photoFile = null),
-                                        child: Container(
-                                          padding: const EdgeInsets.all(4),
-                                          decoration: const BoxDecoration(
-                                            color: Colors.black54,
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: const Icon(
-                                            Icons.close,
-                                            color: Colors.white,
-                                            size: 14,
-                                          ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _AddPetHeader(
+                      isUploading: _isUploading,
+                      onClose: () => Navigator.of(context).pop(),
+                    ),
+                    const Divider(height: 1, color: Color(0x22FFFFFF)),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _PetPhotoPicker(
+                                photoFile: _photoFile,
+                                enabled: !_isUploading,
+                                onChoose: _pickPhoto,
+                                onRemove: _removePhoto,
+                              ),
+                              const SizedBox(height: 24),
+                              const _FormSectionHeading(
+                                icon: Icons.pets_outlined,
+                                title: 'About your pet',
+                                subtitle: 'Start with the essentials.',
+                              ),
+                              const SizedBox(height: 14),
+                              _ResponsiveFieldPair(
+                                isWide: isWide,
+                                first: _PetTextField(
+                                  key: const Key('add-pet-name-field'),
+                                  controller: _nameCtrl,
+                                  label: 'Pet name',
+                                  hint: 'e.g. Mochi',
+                                  icon: Icons.badge_outlined,
+                                  autofocus: true,
+                                  textInputAction: TextInputAction.next,
+                                  validator: _requiredName,
+                                ),
+                                second: _PetDropdownField(
+                                  key: const Key('add-pet-species-field'),
+                                  label: 'Species',
+                                  icon: Icons.category_outlined,
+                                  value: _selectedSpecies,
+                                  items: _speciesOptions,
+                                  onChanged: _isUploading
+                                      ? null
+                                      : (value) {
+                                          if (value == null) return;
+                                          setState(() {
+                                            _selectedSpecies = value;
+                                            if (value != 'Other') {
+                                              _customSpeciesCtrl.clear();
+                                            }
+                                          });
+                                        },
+                                ),
+                              ),
+                              if (_selectedSpecies == 'Other') ...[
+                                const SizedBox(height: 12),
+                                _PetTextField(
+                                  key: const Key(
+                                    'add-pet-custom-species-field',
+                                  ),
+                                  controller: _customSpeciesCtrl,
+                                  label: 'Other species',
+                                  hint: 'What kind of pet?',
+                                  icon: Icons.edit_outlined,
+                                  textInputAction: TextInputAction.next,
+                                  validator: _customSpeciesValidator,
+                                ),
+                              ],
+                              const SizedBox(height: 12),
+                              _ResponsiveFieldPair(
+                                isWide: isWide,
+                                first: _PetTextField(
+                                  key: const Key('add-pet-breed-field'),
+                                  controller: _breedCtrl,
+                                  label: 'Breed',
+                                  hint: 'Optional',
+                                  icon: Icons.fingerprint,
+                                  textInputAction: TextInputAction.next,
+                                ),
+                                second: _PetDropdownField(
+                                  key: const Key('add-pet-life-stage-field'),
+                                  label: 'Life stage',
+                                  icon: Icons.timeline_outlined,
+                                  value: _selectedLifeStage,
+                                  items: _lifeStageOptions,
+                                  hint: 'Select',
+                                  onChanged: _isUploading
+                                      ? null
+                                      : (value) => setState(
+                                          () => _selectedLifeStage = value,
                                         ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      InkWell(
-                        onTap: () => setState(
-                          () => _detailsExpanded = !_detailsExpanded,
-                        ),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          decoration: BoxDecoration(
-                            border: Border(
-                              bottom: _detailsExpanded
-                                  ? const BorderSide(color: Color(0x22FFFFFF))
-                                  : BorderSide.none,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                _detailsExpanded
-                                    ? 'Hide details'
-                                    : 'More details',
-                                style: const TextStyle(
-                                  color: PetTheme.muted,
-                                  fontSize: 12,
                                 ),
                               ),
-                              const SizedBox(width: 4),
-                              Icon(
-                                _detailsExpanded
-                                    ? Icons.expand_less
-                                    : Icons.expand_more,
-                                color: PetTheme.muted,
-                                size: 18,
+                              const SizedBox(height: 12),
+                              _PetTextField(
+                                key: const Key('add-pet-weight-field'),
+                                controller: _weightCtrl,
+                                label: 'Weight',
+                                hint: 'Optional',
+                                icon: Icons.monitor_weight_outlined,
+                                suffixText: 'kg',
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                textInputAction: TextInputAction.done,
+                                validator: _weightValidator,
+                              ),
+                              const SizedBox(height: 20),
+                              _CareDetailsToggle(
+                                expanded: _detailsExpanded,
+                                onTap: _isUploading
+                                    ? null
+                                    : () => setState(
+                                        () => _detailsExpanded =
+                                            !_detailsExpanded,
+                                      ),
+                              ),
+                              AnimatedSize(
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeOut,
+                                child: _detailsExpanded
+                                    ? Padding(
+                                        padding: const EdgeInsets.only(top: 16),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.stretch,
+                                          children: [
+                                            const _FormSectionHeading(
+                                              icon: Icons.favorite_border,
+                                              title: 'Care details',
+                                              subtitle:
+                                                  'Optional information for better recommendations.',
+                                            ),
+                                            const SizedBox(height: 14),
+                                            _PetTextField(
+                                              key: const Key(
+                                                'add-pet-conditions-field',
+                                              ),
+                                              controller: _conditionsCtrl,
+                                              label: 'Known conditions',
+                                              hint:
+                                                  'Allergies, medications, or ongoing care',
+                                              icon: Icons
+                                                  .health_and_safety_outlined,
+                                              maxLines: 2,
+                                              textInputAction:
+                                                  TextInputAction.newline,
+                                            ),
+                                            const SizedBox(height: 12),
+                                            _ResponsiveFieldPair(
+                                              isWide: isWide,
+                                              first: _PetTextField(
+                                                key: const Key(
+                                                  'add-pet-clinic-field',
+                                                ),
+                                                controller: _clinicCtrl,
+                                                label: 'Preferred clinic',
+                                                hint: 'Optional',
+                                                icon: Icons
+                                                    .local_hospital_outlined,
+                                                textInputAction:
+                                                    TextInputAction.next,
+                                              ),
+                                              second: _PetTextField(
+                                                key: const Key(
+                                                  'add-pet-food-field',
+                                                ),
+                                                controller: _foodBrandCtrl,
+                                                label: 'Food brand',
+                                                hint: 'Optional',
+                                                icon: Icons.restaurant_outlined,
+                                                textInputAction:
+                                                    TextInputAction.next,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 12),
+                                            _PetTextField(
+                                              key: const Key(
+                                                'add-pet-address-field',
+                                              ),
+                                              controller: _addressCtrl,
+                                              label: 'Delivery address',
+                                              hint:
+                                                  'Where should pet supplies be delivered?',
+                                              icon: Icons.location_on_outlined,
+                                              maxLines: 2,
+                                              textInputAction:
+                                                  TextInputAction.newline,
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    : const SizedBox.shrink(),
+                              ),
+                              const SizedBox(height: 20),
+                              _AgentAssistanceCallout(
+                                enabled: !_isUploading,
+                                onTap: () => Navigator.of(context).pop('chat'),
                               ),
                             ],
                           ),
                         ),
                       ),
-                      if (_detailsExpanded) ...[
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(child: _field('Breed', _breedCtrl)),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _field(
-                                'Weight (kg)',
-                                _weightCtrl,
-                                keyboardType: TextInputType.number,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _field('Life Stage', _lifeStageCtrl),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _field(
-                                'Known Conditions',
-                                _conditionsCtrl,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        _field('Delivery Address', _addressCtrl),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _field('Preferred Clinic', _clinicCtrl),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _field('Food Brand', _foodBrandCtrl),
-                            ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Divider(color: Color(0x33FFFFFF), height: 1),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Text(
-                              'OR',
-                              style: TextStyle(
-                                color: PetTheme.muted,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          const Expanded(
-                            child: Divider(color: Color(0x33FFFFFF), height: 1),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      InkWell(
-                        onTap: () => Navigator.of(context).pop('chat'),
-                        borderRadius: BorderRadius.circular(24),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0x18FFFFFF),
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(color: const Color(0x22FFFFFF)),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: PetTheme.sage.withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Icon(
-                                  Icons.chat_outlined,
-                                  color: PetTheme.sage,
-                                  size: 20,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Chat with Agent',
-                                      style: TextStyle(
-                                        color: PetTheme.ivory,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    SizedBox(height: 2),
-                                    Text(
-                                      'Snap a photo and tell the agent its name',
-                                      style: TextStyle(
-                                        color: PetTheme.muted,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(
-                                Icons.chevron_right,
-                                color: PetTheme.muted,
-                                size: 20,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                    ],
+                    ),
+                    const Divider(height: 1, color: Color(0x22FFFFFF)),
+                    _AddPetFooter(
+                      isUploading: _isUploading,
+                      onCancel: () => Navigator.of(context).pop(),
+                      onSubmit: _submit,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+    );
+  }
+}
+
+class _AddPetHeader extends StatelessWidget {
+  const _AddPetHeader({required this.isUploading, required this.onClose});
+
+  final bool isUploading;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 20, 12, 18),
+      child: Row(
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: PetTheme.sage.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const SizedBox.square(
+              dimension: 44,
+              child: Icon(Icons.pets, color: PetTheme.sage),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Add New Pet',
+                  style: TextStyle(
+                    color: PetTheme.ivory,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
                   ),
                 ),
-              ),
+                SizedBox(height: 3),
+                Text(
+                  'Create a profile for more personal care.',
+                  style: TextStyle(color: PetTheme.muted, fontSize: 12),
+                ),
+              ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                foregroundColor: PetTheme.muted,
-                textStyle: const TextStyle(fontSize: 13),
-              ),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: _isUploading
-                  ? null
-                  : () async {
-                      if (!_formKey.currentState!.validate()) return;
-                      final messenger = ScaffoldMessenger.of(context);
-                      final nav = Navigator.of(context);
+          IconButton(
+            key: const Key('add-pet-close-button'),
+            tooltip: 'Close',
+            onPressed: isUploading ? null : onClose,
+            icon: const Icon(Icons.close),
+            color: PetTheme.ivory,
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-                      if (_photoFile != null) {
-                        setState(() => _isUploading = true);
-                        try {
-                          final uploaded = await widget.client.uploadMedia(
-                            _photoFile!,
-                          );
-                          _uploadedImagePath = uploaded.path;
-                        } on MediaUploadException {
-                          if (!mounted) return;
-                          messenger.showSnackBar(
-                            const SnackBar(
-                              content: Text('Photo upload failed. Try again.'),
-                            ),
-                          );
-                          setState(() => _isUploading = false);
-                          return;
-                        }
-                      }
+class _PetPhotoPicker extends StatelessWidget {
+  const _PetPhotoPicker({
+    required this.photoFile,
+    required this.enabled,
+    required this.onChoose,
+    required this.onRemove,
+  });
 
-                      final data = <String, String>{
-                        'pet_id': DateTime.now().microsecondsSinceEpoch
-                            .toString(),
-                        'name': _nameCtrl.text,
-                        'species': _speciesCtrl.text,
-                        if (_breedCtrl.text.isNotEmpty)
-                          'breed': _breedCtrl.text,
-                        if (_weightCtrl.text.isNotEmpty)
-                          'weight_kg': _weightCtrl.text,
-                        if (_lifeStageCtrl.text.isNotEmpty)
-                          'life_stage': _lifeStageCtrl.text,
-                        if (_conditionsCtrl.text.isNotEmpty)
-                          'known_conditions': _conditionsCtrl.text,
-                        if (_addressCtrl.text.isNotEmpty)
-                          'delivery_address': _addressCtrl.text,
-                        if (_clinicCtrl.text.isNotEmpty)
-                          'preferred_clinic': _clinicCtrl.text,
-                        if (_foodBrandCtrl.text.isNotEmpty)
-                          'preferred_food_brand': _foodBrandCtrl.text,
-                        'image_path': ?_uploadedImagePath,
-                      };
-                      if (mounted) nav.pop(data);
-                    },
-              style: FilledButton.styleFrom(
-                backgroundColor: PetTheme.sage,
-                foregroundColor: const Color(0xFF1A1E26),
-                textStyle: const TextStyle(fontSize: 13),
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-              ),
-              child: _isUploading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Color(0xFF1A1E26),
+  final File? photoFile;
+  final bool enabled;
+  final VoidCallback onChoose;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPhoto = photoFile != null;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: PetTheme.panelSoft,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0x33FFFFFF)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox.square(
+                dimension: 88,
+                child: hasPhoto
+                    ? Image.file(photoFile!, fit: BoxFit.cover)
+                    : const ColoredBox(
+                        color: Color(0xFF292F39),
+                        child: Icon(
+                          Icons.photo_camera_outlined,
+                          color: PetTheme.muted,
+                          size: 30,
+                        ),
                       ),
-                    )
-                  : const Text('Add Pet'),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hasPhoto ? 'Photo selected' : 'Add a pet photo',
+                    style: const TextStyle(
+                      color: PetTheme.ivory,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Optional, but helpful for recognizing your pet.',
+                    style: TextStyle(color: PetTheme.muted, fontSize: 12),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        key: const Key('add-pet-photo-button'),
+                        onPressed: enabled ? onChoose : null,
+                        icon: Icon(
+                          hasPhoto
+                              ? Icons.sync
+                              : Icons.add_photo_alternate_outlined,
+                          size: 18,
+                        ),
+                        label: Text(hasPhoto ? 'Replace' : 'Choose photo'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: PetTheme.ivory,
+                          side: const BorderSide(color: Color(0x55FFFFFF)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                      if (hasPhoto)
+                        IconButton(
+                          key: const Key('add-pet-remove-photo-button'),
+                          tooltip: 'Remove photo',
+                          onPressed: enabled ? onRemove : null,
+                          icon: const Icon(Icons.delete_outline),
+                          color: PetTheme.coral,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _field(
-    String label,
-    TextEditingController ctrl, {
-    TextInputType? keyboardType,
-    bool autoFocus = false,
-  }) {
+class _FormSectionHeading extends StatelessWidget {
+  const _FormSectionHeading({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: PetTheme.sage, size: 20),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: PetTheme.ivory,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(color: PetTheme.muted, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ResponsiveFieldPair extends StatelessWidget {
+  const _ResponsiveFieldPair({
+    required this.isWide,
+    required this.first,
+    required this.second,
+  });
+
+  final bool isWide;
+  final Widget first;
+  final Widget second;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isWide) {
+      return Column(children: [first, const SizedBox(height: 12), second]);
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: first),
+        const SizedBox(width: 12),
+        Expanded(child: second),
+      ],
+    );
+  }
+}
+
+class _PetTextField extends StatelessWidget {
+  const _PetTextField({
+    super.key,
+    required this.controller,
+    required this.label,
+    required this.icon,
+    this.hint,
+    this.suffixText,
+    this.keyboardType,
+    this.textInputAction,
+    this.autofocus = false,
+    this.maxLines = 1,
+    this.validator,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final IconData icon;
+  final String? hint;
+  final String? suffixText;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final bool autofocus;
+  final int maxLines;
+  final FormFieldValidator<String>? validator;
+
+  @override
+  Widget build(BuildContext context) {
     return TextFormField(
-      controller: ctrl,
+      controller: controller,
       keyboardType: keyboardType,
-      autofocus: autoFocus,
-      style: const TextStyle(color: PetTheme.ivory, fontSize: 13),
-      decoration: InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: PetTheme.panelSoft,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(24),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(24),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(24),
-          borderSide: const BorderSide(color: PetTheme.sage),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 12,
-        ),
-        labelStyle: const TextStyle(color: PetTheme.muted, fontSize: 12),
+      textInputAction: textInputAction,
+      autofocus: autofocus,
+      maxLines: maxLines,
+      style: const TextStyle(color: PetTheme.ivory, fontSize: 14),
+      decoration: _petInputDecoration(
+        label: label,
+        hint: hint,
+        icon: icon,
+        suffixText: suffixText,
       ),
-      validator: (v) {
-        if (label == 'Name' && (v == null || v.trim().isEmpty)) {
-          return 'Name is required';
-        }
-        if (label == 'Species' && (v == null || v.trim().isEmpty)) {
-          return 'Species is required';
-        }
-        return null;
-      },
+      validator: validator,
+    );
+  }
+}
+
+class _PetDropdownField extends StatelessWidget {
+  const _PetDropdownField({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.items,
+    required this.value,
+    required this.onChanged,
+    this.hint,
+  });
+
+  final String label;
+  final IconData icon;
+  final List<String> items;
+  final String? value;
+  final ValueChanged<String?>? onChanged;
+  final String? hint;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<String>(
+      initialValue: value,
+      isExpanded: true,
+      dropdownColor: PetTheme.panelSoft,
+      style: const TextStyle(color: PetTheme.ivory, fontSize: 14),
+      decoration: _petInputDecoration(label: label, icon: icon),
+      hint: hint == null
+          ? null
+          : Text(hint!, style: const TextStyle(color: PetTheme.muted)),
+      items: [
+        for (final item in items)
+          DropdownMenuItem(value: item, child: Text(item)),
+      ],
+      onChanged: onChanged,
+    );
+  }
+}
+
+InputDecoration _petInputDecoration({
+  required String label,
+  required IconData icon,
+  String? hint,
+  String? suffixText,
+}) {
+  const radius = BorderRadius.all(Radius.circular(8));
+  return InputDecoration(
+    labelText: label,
+    hintText: hint,
+    suffixText: suffixText,
+    prefixIcon: Icon(icon, size: 20),
+    filled: true,
+    fillColor: PetTheme.panelSoft,
+    labelStyle: const TextStyle(color: PetTheme.muted),
+    hintStyle: const TextStyle(color: Color(0xFF7E8792)),
+    prefixIconColor: PetTheme.muted,
+    border: const OutlineInputBorder(
+      borderRadius: radius,
+      borderSide: BorderSide(color: Color(0x33FFFFFF)),
+    ),
+    enabledBorder: const OutlineInputBorder(
+      borderRadius: radius,
+      borderSide: BorderSide(color: Color(0x33FFFFFF)),
+    ),
+    focusedBorder: const OutlineInputBorder(
+      borderRadius: radius,
+      borderSide: BorderSide(color: PetTheme.sage, width: 1.5),
+    ),
+    errorBorder: const OutlineInputBorder(
+      borderRadius: radius,
+      borderSide: BorderSide(color: PetTheme.coral),
+    ),
+    focusedErrorBorder: const OutlineInputBorder(
+      borderRadius: radius,
+      borderSide: BorderSide(color: PetTheme.coral, width: 1.5),
+    ),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+  );
+}
+
+class _CareDetailsToggle extends StatelessWidget {
+  const _CareDetailsToggle({required this.expanded, required this.onTap});
+
+  final bool expanded;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      key: const Key('add-pet-care-toggle'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0x12FFFFFF),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0x22FFFFFF)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.health_and_safety_outlined,
+                color: PetTheme.muted,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Care details',
+                  style: TextStyle(
+                    color: PetTheme.ivory,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Text(
+                expanded ? 'Hide' : 'Optional',
+                style: const TextStyle(color: PetTheme.muted, fontSize: 12),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                expanded ? Icons.expand_less : Icons.expand_more,
+                color: PetTheme.muted,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AgentAssistanceCallout extends StatelessWidget {
+  const _AgentAssistanceCallout({required this.enabled, required this.onTap});
+
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      key: const Key('add-pet-chat-action'),
+      onPressed: enabled ? onTap : null,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: PetTheme.ivory,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        side: const BorderSide(color: Color(0x33FFFFFF)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      icon: const Icon(Icons.chat_outlined, color: PetTheme.sage),
+      label: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Chat with Agent',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          SizedBox(height: 2),
+          Text(
+            'Prefer help? Add your pet through a guided conversation.',
+            style: TextStyle(color: PetTheme.muted, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddPetFooter extends StatelessWidget {
+  const _AddPetFooter({
+    required this.isUploading,
+    required this.onCancel,
+    required this.onSubmit,
+  });
+
+  final bool isUploading;
+  final VoidCallback onCancel;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            TextButton(
+              key: const Key('add-pet-cancel-button'),
+              onPressed: isUploading ? null : onCancel,
+              child: const Text('Cancel'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              key: const Key('add-pet-submit-button'),
+              onPressed: isUploading ? null : onSubmit,
+              style: FilledButton.styleFrom(
+                backgroundColor: PetTheme.sage,
+                foregroundColor: const Color(0xFF1A1E26),
+              ),
+              icon: isUploading
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF1A1E26),
+                      ),
+                    )
+                  : const Icon(Icons.pets, size: 18),
+              label: Text(isUploading ? 'Uploading' : 'Add Pet'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1146,7 +1565,7 @@ class _GlassCommandButton extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Tooltip(
           message: tooltip,
-                  child: label == null || label!.isEmpty
+          child: label == null || label!.isEmpty
               ? IconButton(
                   onPressed: onPressed,
                   icon: Icon(icon, color: iconColor),
@@ -1182,5 +1601,3 @@ class _GlassCommandButton extends StatelessWidget {
     );
   }
 }
-
-
