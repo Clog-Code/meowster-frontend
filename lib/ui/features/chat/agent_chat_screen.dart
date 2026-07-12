@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../data/services/agent_stream_client.dart';
 import '../../../data/services/location_service.dart';
@@ -12,15 +13,17 @@ import '../../../data/services/pet_streak_client.dart';
 import '../../../data/services/speech_to_text_service.dart';
 import '../../../data/services/text_to_speech_service.dart';
 import '../../../data/services/visual_llm_client.dart';
+import '../../../domain/models/owner_profile.dart';
 import '../../../domain/models/pet_capture_result.dart';
 import '../../core/pet_theme.dart';
-import '../capture/capture_screen.dart';
 import 'chat_composer.dart';
 
 class AgentChatScreen extends StatefulWidget {
   const AgentChatScreen({
     required this.client,
     this.initialCapture,
+    this.initialThreadId,
+    this.ownerProfile,
     this.streakClient = const EmptyPetStreakClient(),
     this.visualLlmClient = const DisabledVisualLlmClient(),
     this.locationService = const GeolocatorLocationService(),
@@ -32,6 +35,8 @@ class AgentChatScreen extends StatefulWidget {
 
   final AgentStreamClient client;
   final PetCaptureResult? initialCapture;
+  final String? initialThreadId;
+  final OwnerProfile? ownerProfile;
   final PetStreakClient streakClient;
   final VisualLlmClient visualLlmClient;
   final LocationService locationService;
@@ -47,7 +52,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   final _messages = <ChatMessage>[];
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
-  final _threadId = newAgentId();
+  late String _threadId;
   ChatMessage? _currentAssistant;
   bool _isSending = false;
   bool _isLocating = false;
@@ -60,7 +65,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   late final Future<void> _autoReadReady;
   late final bool _ownsTextToSpeechService;
   bool _isListening = false;
-  bool _isPushToTalkHeld = false;
+  bool _isDictationHeld = false;
   bool _isDisposed = false;
   bool _autoReadEnabled = true;
   double _soundLevel = 0;
@@ -68,10 +73,24 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   String? _speakingMessageId;
   String _dictationBaseText = '';
   final _autoReadMessageIds = <String>{};
+  final _imagePicker = ImagePicker();
+
+  /// On-device path of a photo picked from the gallery for the *next*
+  /// message, shown as a thumbnail above the composer. This is the
+  /// lightweight chat-page attach flow: pick → upload → let the user also
+  /// type text → send both together. It intentionally never touches
+  /// `widget.visualLlmClient` (the on-device ML emotion model) — that
+  /// pipeline is reserved for the dedicated camera/capture screen. Here we
+  /// only need the backend's `visual_search` tool, so uploading the photo
+  /// for its server-side path is enough.
+  File? _pendingAttachmentFile;
+  UploadedMedia? _pendingAttachmentUpload;
+  bool _isUploadingAttachment = false;
 
   @override
   void initState() {
     super.initState();
+    _threadId = widget.initialThreadId ?? newAgentId();
     _speechToTextService =
         widget.speechToTextService ?? NativeSpeechToTextService();
     _ownsTextToSpeechService = widget.textToSpeechService == null;
@@ -81,11 +100,34 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     _autoReadPreferenceStore =
         widget.autoReadPreferenceStore ?? SharedPreferencesAutoReadStore();
     _autoReadReady = _loadAutoReadPreference();
+
+    if (widget.initialThreadId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_loadHistory());
+      });
+    }
+
     final capture = widget.initialCapture;
     if (capture != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _sendPerception(capture);
       });
+    }
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      final history = await widget.client.fetchThreadMessages(_threadId);
+      if (!mounted) return;
+      setState(() {
+        _messages.addAll(history);
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      debugPrint('Failed to load chat history: $error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load conversation history: $error')),
+      );
     }
   }
 
@@ -114,6 +156,27 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     setState(() => _autoReadEnabled = enabled);
   }
 
+  void _startNewChat() {
+    _activeRunToken++;
+    setState(() {
+      _threadId = newAgentId();
+      _messages.clear();
+      _currentAssistant = null;
+      _isSending = false;
+    });
+  }
+
+  void _switchThread(String threadId) {
+    _activeRunToken++;
+    setState(() {
+      _threadId = threadId;
+      _messages.clear();
+      _currentAssistant = null;
+      _isSending = false;
+    });
+    unawaited(_loadHistory());
+  }
+
   Future<void> _sendPerception(PetCaptureResult capture) async {
     if (_isSending) return;
     final payload = capture.toPerceptionPayload(_threadId);
@@ -135,12 +198,22 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
 
   Future<void> _sendChat(String text) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty || _isSending) return;
+    final attachedFile = _pendingAttachmentFile;
+    final attachedUpload = _pendingAttachmentUpload;
+    if ((trimmed.isEmpty && attachedFile == null) || _isSending) return;
+    // If the photo is still uploading, wait briefly rather than sending
+    // without the server-side path the visual_search tool needs.
+    if (attachedFile != null && _isUploadingAttachment) return;
     await _stopSpeechPlayback();
     if (!mounted) return;
-    final agentContext = _sendLocationWithNextReply
-        ? _locationContextMessage(_sharedLocation)
-        : null;
+
+    final contextParts = <String>[
+      if (_sendLocationWithNextReply)
+        _locationContextMessage(_sharedLocation) ?? '',
+      if (attachedFile != null)
+        'attached_image_path: ${attachedUpload?.path ?? ''}',
+    ].where((part) => part.trim().isNotEmpty).toList();
+    final agentContext = contextParts.isEmpty ? null : contextParts.join('\n');
 
     _inputController.clear();
     setState(() {
@@ -150,20 +223,82 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
           role: ChatRole.user,
           content: trimmed,
           agentContext: agentContext,
+          localImagePath: attachedFile?.path,
         ),
       );
       _sendLocationWithNextReply = false;
       _isSending = true;
     });
+    _clearAttachment();
     _scrollToBottom();
 
     final payload = buildRunAgentInput(
       threadId: _threadId,
       runId: _newId(),
       messages: _messages,
+      state: _buildAgentState(),
       context: _buildAgentContext(),
     );
     await _consume(path: '/agent', payload: payload);
+  }
+
+  /// Picks a photo from the gallery for the lightweight chat-page attach
+  /// flow and uploads it immediately so its server-side path is ready by
+  /// the time the user hits send. Does NOT open the camera/capture screen
+  /// and does NOT run it through `widget.visualLlmClient` — that heavier
+  /// ML pipeline is reserved for the dedicated snapchat-style camera page.
+  Future<void> _pickAttachment() async {
+    if (_isSending) return;
+    XFile? picked;
+    try {
+      picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not open gallery: $error')));
+      return;
+    }
+    if (picked == null) return;
+
+    final file = File(picked.path);
+    setState(() {
+      _pendingAttachmentFile = file;
+      _pendingAttachmentUpload = null;
+      _isUploadingAttachment = true;
+    });
+
+    try {
+      final uploaded = await widget.client.uploadMedia(file);
+      if (!mounted) return;
+      // The user may have removed the attachment while the upload was
+      // still in flight — don't resurrect it.
+      if (_pendingAttachmentFile?.path != file.path) return;
+      setState(() {
+        _pendingAttachmentUpload = uploaded;
+        _isUploadingAttachment = false;
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      if (_pendingAttachmentFile?.path != file.path) return;
+      setState(() {
+        _isUploadingAttachment = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Photo upload failed: $error')));
+    }
+  }
+
+  void _clearAttachment() {
+    setState(() {
+      _pendingAttachmentFile = null;
+      _pendingAttachmentUpload = null;
+      _isUploadingAttachment = false;
+    });
   }
 
   Future<void> _consume({
@@ -248,6 +383,11 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
           'value': jsonEncode(_sharedLocation!.toJson()),
         },
     ];
+  }
+
+  Map<String, dynamic> _buildAgentState() {
+    if (widget.ownerProfile == null) return const {};
+    return {'owner_profile': widget.ownerProfile!.toJson()};
   }
 
   String _friendlyError(Object error) {
@@ -589,16 +729,16 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   }
 
   void _beginPushToTalk() {
-    if (_isSending || _isPushToTalkHeld) return;
+    if (_isSending || _isDictationHeld) return;
     FocusManager.instance.primaryFocus?.unfocus();
-    _isPushToTalkHeld = true;
+    _isDictationHeld = true;
     unawaited(_startDictation());
   }
 
   Future<void> _startDictation() async {
     await _stopSpeechPlayback();
     await Future<void>.delayed(const Duration(milliseconds: 120));
-    if (!_isPushToTalkHeld || _isSending || !mounted) return;
+    if (!_isDictationHeld || _isSending || !mounted) return;
     _dictationBaseText = _inputController.text.trimRight();
     setState(() {
       _isListening = true;
@@ -620,34 +760,59 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
         },
         onError: (error) {
           if (!mounted || _isDisposed) return;
-          _isPushToTalkHeld = false;
+          _isDictationHeld = false;
           _setListening(false);
           _showSpeechError(error);
         },
       );
     } on Object catch (error) {
       if (!mounted || _isDisposed) return;
-      _isPushToTalkHeld = false;
+      _isDictationHeld = false;
       _setListening(false);
       _showSpeechError(error);
     }
   }
 
+  /// Ends dictation and sends whatever transcript was captured. Used both
+  /// by releasing the hold-to-talk button and by tapping "confirm" in
+  /// tap-to-confirm mode.
   void _endPushToTalk() {
-    if (!_isPushToTalkHeld && !_isListening) return;
-    _isPushToTalkHeld = false;
+    if (!_isDictationHeld && !_isListening) return;
+    _isDictationHeld = false;
     unawaited(_stopDictation());
+  }
+
+  /// Ends dictation and discards the transcript instead of sending it.
+  /// Used by the "cancel" button in tap-to-confirm mode.
+  void _cancelDictation() {
+    if (!_isDictationHeld && !_isListening) return;
+    _isDictationHeld = false;
+    unawaited(_discardDictation());
   }
 
   Future<void> _stopDictation() async {
     try {
       await _speechToTextService.stop();
     } on Object catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_friendlySpeechError(error))));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_friendlySpeechError(error))));
+      }
     } finally {
+      _setListening(false);
+    }
+  }
+
+  Future<void> _discardDictation() async {
+    try {
+      await _speechToTextService.cancel();
+    } on Object catch (_) {
+      // Best-effort discard — nothing actionable to show the user here.
+    } finally {
+      if (mounted && !_isDisposed) {
+        _setInputText(_dictationBaseText);
+      }
       _setListening(false);
     }
   }
@@ -764,21 +929,6 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     return 'Voice playback is unavailable. $text';
   }
 
-  void _openGalleryFlow() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => CaptureScreen(
-          client: widget.client,
-          streakClient: widget.streakClient,
-          visualLlmClient: widget.visualLlmClient,
-          textToSpeechService: _textToSpeechService,
-          autoReadPreferenceStore: _autoReadPreferenceStore,
-          openGalleryOnStart: true,
-        ),
-      ),
-    );
-  }
-
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
@@ -798,6 +948,11 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
       appBar: AppBar(
         title: const Text('Pet Agent'),
         actions: [
+          IconButton(
+            tooltip: 'New chat',
+            onPressed: _startNewChat,
+            icon: const Icon(Icons.add_circle_outline),
+          ),
           _ChecklistActionButton(
             card: _latestHitlCard(),
             onPressed: _showChecklistSheet,
@@ -813,61 +968,100 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
           ),
         ],
       ),
-      endDrawer: _ChatMenuDrawer(threadId: _threadId),
+      endDrawer: _ChatMenuDrawer(
+        client: widget.client,
+        currentThreadId: _threadId,
+        onThreadSelected: _switchThread,
+      ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          return Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: constraints.maxWidth > 700 ? 680 : double.infinity,
-              ),
-              child: Column(
-                children: [
-                  Expanded(
-                    child: _messages.isEmpty
-                        ? const _EmptyChatState()
-                        : ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                            itemCount: _messages.length,
-                            itemBuilder: (context, index) {
-                              return ChatMessageView(
-                                message: _messages[index],
-                                showLocationPrompt: _shouldAskForLocation(
-                                  _messages[index],
-                                ),
-                                isLocating: _isLocating,
-                                autoReadEnabled: _autoReadEnabled,
-                                isSpeaking:
-                                    _speakingMessageId == _messages[index].id,
-                                onShareLocation: _shareCurrentLocation,
-                                onBookRecommendation: _sendChat,
-                                onToggleAutoRead: _toggleAutoRead,
-                              );
-                            },
-                          ),
+          return Stack(
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: constraints.maxWidth > 700
+                        ? 680
+                        : double.infinity,
                   ),
-                  SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                      child: ChatComposer(
-                        controller: _inputController,
-                        isSending: _isSending,
-                        isListening: _isListening,
-                        soundLevel: _soundLevel,
-                        onGallery: _openGalleryFlow,
-                        onPushToTalkStart: _beginPushToTalk,
-                        onPushToTalkEnd: _endPushToTalk,
-                        onSend: () =>
-                            unawaited(_sendChat(_inputController.text)),
-                        onStop: _stopCurrentRun,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: _messages.isEmpty
+                            ? const _EmptyChatState()
+                            : ListView.builder(
+                                controller: _scrollController,
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  12,
+                                  16,
+                                  12,
+                                ),
+                                itemCount: _messages.length,
+                                itemBuilder: (context, index) {
+                                  return ChatMessageView(
+                                    message: _messages[index],
+                                    showLocationPrompt: _shouldAskForLocation(
+                                      _messages[index],
+                                    ),
+                                    isLocating: _isLocating,
+                                    autoReadEnabled: _autoReadEnabled,
+                                    isSpeaking:
+                                        _speakingMessageId ==
+                                        _messages[index].id,
+                                    onShareLocation: _shareCurrentLocation,
+                                    onBookRecommendation: _sendChat,
+                                    onToggleAutoRead: _toggleAutoRead,
+                                  );
+                                },
+                              ),
+                      ),
+                      SafeArea(
+                        top: false,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                          child: ChatComposer(
+                            controller: _inputController,
+                            isSending: _isSending,
+                            isListening: _isListening,
+                            soundLevel: _soundLevel,
+                            onGallery: () => unawaited(_pickAttachment()),
+                            onHoldStart: _beginPushToTalk,
+                            onHoldEnd: _endPushToTalk,
+                            onTapStart: _beginPushToTalk,
+                            onConfirmListening: _endPushToTalk,
+                            onCancelListening: _cancelDictation,
+                            onSend: () =>
+                                unawaited(_sendChat(_inputController.text)),
+                            onStop: _stopCurrentRun,
+                            pendingImagePath: _pendingAttachmentFile?.path,
+                            isUploadingImage: _isUploadingAttachment,
+                            onRemoveAttachment: _clearAttachment,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // Rendered centered on screen — away from the push-to-talk
+              // button entirely — and non-interactive, so it can never
+              // intercept the pointer release that ends the long press.
+              if (_isListening)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 28),
+                        child: VoiceListeningPanel(
+                          transcript: _inputController.text,
+                          soundLevel: _soundLevel,
+                        ),
                       ),
                     ),
                   ),
-                ],
-              ),
-            ),
+                ),
+            ],
           );
         },
       ),
@@ -1041,6 +1235,18 @@ class UserMessageBubble extends StatelessWidget {
                   child: PetMomentCard(
                     label: message.attachmentLabel!,
                     capture: message.capture,
+                  ),
+                ),
+              if (message.localImagePath != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      File(message.localImagePath!),
+                      width: 180,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
               if (message.content.isNotEmpty && message.capture == null)
@@ -2064,10 +2270,44 @@ class _HitlCardState extends State<HitlCard> {
   }
 }
 
-class _ChatMenuDrawer extends StatelessWidget {
-  const _ChatMenuDrawer({required this.threadId});
+class _ChatMenuDrawer extends StatefulWidget {
+  const _ChatMenuDrawer({
+    required this.client,
+    required this.currentThreadId,
+    required this.onThreadSelected,
+  });
 
-  final String threadId;
+  final AgentStreamClient client;
+  final String currentThreadId;
+  final ValueChanged<String> onThreadSelected;
+
+  @override
+  State<_ChatMenuDrawer> createState() => _ChatMenuDrawerState();
+}
+
+class _ChatMenuDrawerState extends State<_ChatMenuDrawer> {
+  List<ChatThreadSummary>? _threads;
+  Object? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadThreads());
+  }
+
+  Future<void> _loadThreads() async {
+    try {
+      final threads = await widget.client.fetchThreads();
+      if (!mounted) return;
+      setState(() {
+        _threads = threads;
+        _loadError = null;
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _loadError = error);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2088,22 +2328,77 @@ class _ChatMenuDrawer extends StatelessWidget {
               leading: const Icon(Icons.chat_bubble_outline),
               title: const Text('Current chat'),
               subtitle: Text(
-                threadId,
+                widget.currentThreadId,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
+              selected: true,
+              onTap: () => Navigator.of(context).pop(),
             ),
             const Divider(),
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Previous chats will appear here after the backend exposes thread history APIs.',
-                style: TextStyle(color: PetTheme.muted, height: 1.35),
-              ),
-            ),
+            if (_loadError != null)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Could not load history.',
+                  style: TextStyle(color: PetTheme.coral, height: 1.35),
+                ),
+              )
+            else if (_threads == null)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else if (_threads!.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'No previous conversations yet.',
+                  style: TextStyle(color: PetTheme.muted, height: 1.35),
+                ),
+              )
+            else
+              for (final thread in _threads!)
+                if (thread.threadId != widget.currentThreadId)
+                  ListTile(
+                    leading: const Icon(Icons.history),
+                    title: Text(
+                      _threadTitle(thread),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      thread.lastMessage ?? '${thread.messageCount} messages',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      widget.onThreadSelected(thread.threadId);
+                    },
+                  ),
           ],
         ),
       ),
     );
+  }
+
+  String _threadTitle(ChatThreadSummary thread) {
+    if (thread.title != null && thread.title!.trim().isNotEmpty) {
+      return thread.title!;
+    }
+    final preview = thread.lastMessage;
+    if (preview != null && preview.trim().isNotEmpty) {
+      return preview.length > 60 ? '${preview.substring(0, 57)}...' : preview;
+    }
+    final date = thread.createdAt;
+    if (date.length >= 10) return date.substring(0, 10);
+    return thread.threadId.length > 8
+        ? 'Chat ${thread.threadId.substring(0, 8)}'
+        : thread.threadId;
   }
 }

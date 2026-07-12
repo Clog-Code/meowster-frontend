@@ -11,6 +11,7 @@ import 'package:amd_pet_frontend/data/services/speech_to_text_service.dart';
 import 'package:amd_pet_frontend/data/services/text_to_speech_service.dart';
 import 'package:amd_pet_frontend/data/services/visual_llm_client.dart';
 import 'package:amd_pet_frontend/domain/models/camera_zoom_state.dart';
+import 'package:amd_pet_frontend/domain/models/owner_profile.dart';
 import 'package:amd_pet_frontend/domain/models/pet_capture_result.dart';
 import 'package:amd_pet_frontend/domain/models/pet_streak_summary.dart';
 import 'package:amd_pet_frontend/ui/core/pet_theme.dart';
@@ -1154,6 +1155,45 @@ void main() {
     expect(messages.last['content'], 'My cat has watery eyes');
   });
 
+  testWidgets('owner profile is sent as state', (tester) async {
+    final client = FakeAgentClient();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: PetTheme.dark(),
+        home: AgentChatScreen(
+          client: client,
+          ownerProfile: const OwnerProfile(
+            name: 'Dickson Lai',
+            phone: '+65 8xxx 9460',
+            address: '14000 Bukit Mertajam, Pulau Pinang',
+          ),
+          textToSpeechService: FakeTextToSpeechService(),
+          autoReadPreferenceStore: FakeAutoReadPreferenceStore(enabled: false),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'Hello');
+    await tester.ensureVisible(find.byTooltip('Send'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Send'));
+    await tester.pumpAndSettle();
+
+    final state = client.payloads.last['state'] as Map<String, dynamic>;
+    expect(state, contains('owner_profile'));
+    expect(state['owner_profile'], containsPair('owner_name', 'Dickson Lai'));
+    expect(
+      state['owner_profile'],
+      containsPair('owner_phone', '+65 8xxx 9460'),
+    );
+    expect(
+      state['owner_profile'],
+      containsPair('owner_address', '14000 Bukit Mertajam, Pulau Pinang'),
+    );
+  });
+
   testWidgets('runtime speech errors close waveform without clearing draft', (
     tester,
   ) async {
@@ -1542,6 +1582,34 @@ class FakeAgentClient implements AgentStreamClient {
       throw StateError('network failed');
     }
   }
+
+  @override
+  Future<UploadedMedia> uploadMedia(File file) async {
+    return UploadedMedia(url: '', path: file.path);
+  }
+
+  @override
+  Future<List<ChatThreadSummary>> fetchThreads({int limit = 50}) async {
+    return [];
+  }
+
+  @override
+  Future<List<ChatMessage>> fetchThreadMessages(String threadId) async {
+    return [];
+  }
+
+  @override
+  Future<Map<String, dynamic>?> fetchPetProfile(String petId) async {
+    return null;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchPetProfiles() async {
+    return [];
+  }
+
+  @override
+  Future<void> createPetProfile(Map<String, String> profile) async {}
 }
 
 class CapturingHttpClient extends http.BaseClient {

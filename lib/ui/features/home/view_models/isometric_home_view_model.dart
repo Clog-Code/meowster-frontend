@@ -4,6 +4,8 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../../data/services/agent_stream_client.dart';
+import '../../../../data/services/pet_streak_client.dart';
 import '../models/pet_room_state.dart';
 
 typedef DeviceClock = DateTime Function();
@@ -109,27 +111,16 @@ const List<PetStandbyAction> petStandbyActions = [
   ),
 ];
 
-const String primaryPetId = 'mochi';
-const String secondaryPetId = 'luna';
-
-const PetStats defaultPrimaryPetStats = PetStats(
-  name: 'Mochi',
-  species: 'Cat',
-  emotion: 'Sleepy',
-);
-
-const PetStats defaultSecondaryPetStats = PetStats(
-  name: 'Luna',
-  species: 'Cat',
-  emotion: 'Curious',
-);
-
 const double petFloorMinX = 0.32;
 const double petFloorMaxX = 0.74;
 const double petFloorMinY = 0.59;
 const double petFloorMaxY = 0.82;
-const Offset initialPetPosition = Offset(0.54, 0.72);
-const Offset initialSecondaryPetPosition = Offset(0.66, 0.66);
+final List<Offset> _petPositions = const [
+  Offset(0.50, 0.74),
+  Offset(0.66, 0.66),
+  Offset(0.38, 0.64),
+  Offset(0.58, 0.58),
+];
 
 IsometricRoomAssets roomAssetsFor(DateTime localTime) {
   final hour = localTime.hour;
@@ -159,38 +150,126 @@ class IsometricHomeViewModel extends ChangeNotifier {
     DeviceClock clock = DateTime.now,
     Random? random,
     this.actionSelector,
+    this.client,
+    this.streakClient,
+    List<PetRoomPetState> initialPets = const [],
   }) : _clock = clock,
        _random = random ?? Random(),
        _state = PetRoomState(
          roomAssets: currentRoomAssets(clock: clock),
-         pets: List.unmodifiable([
-           PetRoomPetState(
-             id: primaryPetId,
-             stats: defaultPrimaryPetStats,
-             activeAction: standbyActionById(
-               PetStandbyActionId.sleepAndWake,
-             ),
-             normalizedPosition: initialPetPosition,
-           ),
-           PetRoomPetState(
-             id: secondaryPetId,
-             stats: defaultSecondaryPetStats,
-             activeAction: standbyActionById(PetStandbyActionId.sitAndLick),
-             normalizedPosition: initialSecondaryPetPosition,
-           ),
-         ]),
+         pets: initialPets,
        );
 
   final DeviceClock _clock;
   final Random _random;
   final StandbyActionSelector? actionSelector;
+  final AgentStreamClient? client;
+  final PetStreakClient? streakClient;
+  int? currentStreak;
   final Map<String, Timer> _standbyTimers = {};
   final Map<String, PetStandbyActionId> _forcedNextActions = {};
   bool _isStandbyRunning = false;
+  bool _petsLoaded = false;
   PetRoomState _state;
+
+  Future<void> loadPets() async {
+    final c = client;
+    if (c == null) return;
+    try {
+      final petList = await c.fetchPetProfiles();
+      if (petList.isEmpty) return;
+
+      final petStates = <PetRoomPetState>[];
+      for (var i = 0; i < petList.length; i++) {
+        final p = petList[i];
+        final petId = p['pet_id']?.toString() ?? '';
+        if (petId.isEmpty) continue;
+        final position = i < _petPositions.length
+            ? _petPositions[i]
+            : Offset(0.54, 0.72);
+        petStates.add(PetRoomPetState(
+          id: petId,
+          stats: PetStats(
+            name: p['name']?.toString() ?? 'Pet ${i + 1}',
+            species: p['species']?.toString() ?? '',
+            emotion: 'Sleepy',
+          ),
+          activeAction: standbyActionById(PetStandbyActionId.sleepAndWake),
+          normalizedPosition: position,
+        ));
+      }
+
+      if (petStates.isEmpty) return;
+      _state = _state.copyWith(pets: List.unmodifiable(petStates));
+      _petsLoaded = true;
+      notifyListeners();
+
+      for (final pet in petStates) {
+        loadPetProfile(pet.id);
+      }
+    } on AgentConnectionException {
+      // Backend unavailable.
+    }
+  }
+
+  void refreshStreak() {
+    _loadStreak();
+  }
+
+  Future<void> _loadStreak() async {
+    final c = streakClient;
+    if (c == null) return;
+    final petId = _state.selectedPetId;
+    if (petId == null) return;
+    try {
+      final summary = await c.fetchStreakSummary(petId: petId);
+      currentStreak = summary.currentStreak;
+      notifyListeners();
+    } on AgentConnectionException {
+      // Streak backend unavailable.
+    }
+  }
+
+  Future<void> loadPetProfile(String petId) async {
+    final c = client;
+    if (c == null) return;
+    try {
+      final profile = await c.fetchPetProfile(petId);
+      if (profile == null) return;
+      final petIndex = _state.pets.indexWhere((pet) => pet.id == petId);
+      if (petIndex == -1) return;
+
+      final pet = _state.pets[petIndex];
+      final stats = pet.stats.copyWith(
+        name: profile['name']?.toString() ?? pet.stats.name,
+        species: profile['species']?.toString() ?? pet.stats.species,
+        breed: profile['breed']?.toString(),
+        weightKg: profile['weight_kg'] != null
+            ? (profile['weight_kg'] as num).toDouble()
+            : null,
+        lifeStage: profile['life_stage']?.toString(),
+        knownConditions: profile['known_conditions']?.toString(),
+        deliveryAddress: profile['delivery_address']?.toString(),
+        preferredClinic: profile['preferred_clinic']?.toString(),
+        preferredFoodBrand: profile['preferred_food_brand']?.toString(),
+      );
+      final pets = List<PetRoomPetState>.of(_state.pets);
+      pets[petIndex] = pet.copyWith(stats: stats);
+      _state = _state.copyWith(pets: List.unmodifiable(pets));
+      notifyListeners();
+    } on AgentConnectionException {
+      // Backend unavailable.
+    }
+  }
 
   PetRoomState get state => _state;
   bool get isStandbyRunning => _isStandbyRunning;
+
+  void clearSelection() {
+    _state = _state.copyWith(clearSelectedPet: true);
+    currentStreak = null;
+    notifyListeners();
+  }
 
   void togglePetStats(String petId) {
     if (!_state.pets.any((pet) => pet.id == petId)) return;
@@ -200,6 +279,7 @@ class IsometricHomeViewModel extends ChangeNotifier {
       clearSelectedPet: isAlreadySelected,
     );
     notifyListeners();
+    if (!isAlreadySelected) _loadStreak();
   }
 
   void refreshBackground() {
@@ -225,10 +305,19 @@ class IsometricHomeViewModel extends ChangeNotifier {
   void startStandby() {
     if (_isStandbyRunning) return;
     _isStandbyRunning = true;
-    for (final pet in _state.pets) {
-      _scheduleNextAction(pet.id);
+    if (!_petsLoaded) {
+      loadPets().then((_) {
+        for (final pet in _state.pets) {
+          _scheduleNextAction(pet.id);
+        }
+        triggerWelcome();
+      });
+    } else {
+      for (final pet in _state.pets) {
+        _scheduleNextAction(pet.id);
+      }
+      triggerWelcome();
     }
-    triggerWelcome();
   }
 
   void pauseStandby() {
@@ -241,11 +330,17 @@ class IsometricHomeViewModel extends ChangeNotifier {
 
   void resumeStandby() {
     refreshBackground();
+    _isStandbyRunning = false;
+    _petsLoaded = false;
+    _standbyTimers.clear();
+    _forcedNextActions.clear();
     startStandby();
   }
 
   void advanceStandby() {
-    advancePetStandby(primaryPetId);
+    if (_state.pets.isNotEmpty) {
+      advancePetStandby(_state.pets.first.id);
+    }
   }
 
   void advancePetStandby(String petId) {

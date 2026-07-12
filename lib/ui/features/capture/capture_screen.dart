@@ -26,6 +26,8 @@ class CaptureScreen extends StatefulWidget {
   const CaptureScreen({
     required this.client,
     required this.streakClient,
+    required this.petId,
+    required this.petName,
     this.visualLlmClient = const DisabledVisualLlmClient(),
     this.petBoxDetector,
     this.textToSpeechService,
@@ -37,6 +39,8 @@ class CaptureScreen extends StatefulWidget {
 
   final AgentStreamClient client;
   final PetStreakClient streakClient;
+  final String petId;
+  final String petName;
   final VisualLlmClient visualLlmClient;
   final PetBoxDetector? petBoxDetector;
   final TextToSpeechService? textToSpeechService;
@@ -354,10 +358,17 @@ class _CaptureScreenState extends State<CaptureScreen>
         });
       }
 
+      // Run the on-device/ML perception model and the agentic backend's
+      // visual-search upload concurrently — they're independent and the
+      // upload is best-effort, so it must never block or fail the ML
+      // emotion result.
+      final visualSearchUpload = _uploadForVisualSearch(image);
+
       try {
         final prediction = await widget.visualLlmClient.predictImageEmotion(
           image,
         );
+        final uploadedImagePath = await visualSearchUpload;
         await _setPreview(
           PetCaptureResult(
             kind: CaptureMediaKind.image,
@@ -368,6 +379,7 @@ class _CaptureScreenState extends State<CaptureScreen>
             healthFlags: const [],
             sourceLabel: sourceLabel,
             path: image.path,
+            uploadedImagePath: uploadedImagePath,
           ),
         );
       } on Object catch (error) {
@@ -379,6 +391,7 @@ class _CaptureScreenState extends State<CaptureScreen>
             ),
           ),
         );
+        final uploadedImagePath = await visualSearchUpload;
         await _setPreview(
           PetCaptureResult(
             kind: CaptureMediaKind.image,
@@ -387,11 +400,29 @@ class _CaptureScreenState extends State<CaptureScreen>
             healthFlags: const ['needs review'],
             sourceLabel: sourceLabel,
             path: image.path,
+            uploadedImagePath: uploadedImagePath,
           ),
         );
       }
     } finally {
       if (mounted) setState(() => _analyzingImage = false);
+    }
+  }
+
+  /// Uploads [image] to the agentic backend so an "attached_image_path"
+  /// can ride along in the perception payload's notes, letting the
+  /// orchestrator trigger a subagent's `visual_search` tool (breed/
+  /// condition identification via Google Lens). This is a second, separate
+  /// pipeline from `widget.visualLlmClient` above — failures here are
+  /// swallowed (returns null) so a flaky/offline backend never blocks the
+  /// on-device emotion result from reaching the preview.
+  Future<String?> _uploadForVisualSearch(File image) async {
+    try {
+      final uploaded = await widget.client.uploadMedia(image);
+      return uploaded.path.isEmpty ? null : uploaded.path;
+    } on Object catch (error) {
+      debugPrint('Visual search upload skipped: $error');
+      return null;
     }
   }
 
@@ -426,7 +457,7 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 
   Future<PetStreakSummary> _loadStreak() {
-    return widget.streakClient.fetchStreakSummary();
+    return widget.streakClient.fetchStreakSummary(petId: widget.petId);
   }
 
   void _refreshStreak() {
@@ -891,7 +922,11 @@ class _CaptureScreenState extends State<CaptureScreen>
         .push(
           MaterialPageRoute<void>(
             builder: (context) =>
-                PetMomentStreakScreen(streakClient: widget.streakClient),
+                PetMomentStreakScreen(
+                  streakClient: widget.streakClient,
+                  petId: widget.petId,
+                  petName: widget.petName,
+                ),
           ),
         )
         .then((_) => _refreshStreak());
