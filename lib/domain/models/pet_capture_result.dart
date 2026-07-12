@@ -1,5 +1,3 @@
-import 'pet_tracking_sample.dart';
-
 enum CaptureMediaKind { video, image, demo }
 
 class PetCaptureResult {
@@ -12,7 +10,6 @@ class PetCaptureResult {
     this.petId = 'pet-01',
     this.emotionConfidence,
     this.emotionProbabilities,
-    this.trackingSamples = const [],
     this.path,
     this.uploadedImagePath,
   });
@@ -25,7 +22,6 @@ class PetCaptureResult {
   final String petId;
   final double? emotionConfidence;
   final Map<String, double>? emotionProbabilities;
-  final List<PetTrackingSample> trackingSamples;
   final String? path;
 
   /// Server-side absolute path returned by the agentic backend's

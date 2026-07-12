@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:amd_pet_frontend/app/pet_agent_app.dart';
 import 'package:amd_pet_frontend/data/services/agent_stream_client.dart';
 import 'package:amd_pet_frontend/data/services/location_service.dart';
-import 'package:amd_pet_frontend/data/services/pet_box_detector.dart';
 import 'package:amd_pet_frontend/data/services/pet_streak_client.dart';
 import 'package:amd_pet_frontend/data/services/speech_to_text_service.dart';
 import 'package:amd_pet_frontend/data/services/text_to_speech_service.dart';
@@ -19,9 +18,7 @@ import 'package:amd_pet_frontend/ui/features/capture/capture_screen.dart';
 import 'package:amd_pet_frontend/ui/features/chat/agent_chat_screen.dart';
 import 'package:amd_pet_frontend/ui/features/home/views/isometric_home_page.dart';
 import 'package:amd_pet_frontend/ui/features/streak/pet_moment_streak_screen.dart';
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -187,109 +184,6 @@ void main() {
     expect(clampZoom(6, 1, 5), 5);
     expect(zoomForScale(baseZoom: 2, scale: 1.5, minZoom: 1, maxZoom: 5), 3);
     expect(zoomForScale(baseZoom: 4, scale: 2, minZoom: 1, maxZoom: 5), 5);
-  });
-
-  test('auto tracking zoom converges toward useful pet framing', () {
-    expect(
-      autoTrackingZoom(
-        currentZoom: 1,
-        boxAreaFraction: 0.05,
-        minZoom: 1,
-        maxZoom: 6,
-      ),
-      greaterThan(1),
-    );
-    expect(
-      autoTrackingZoom(
-        currentZoom: 2,
-        boxAreaFraction: 0.7,
-        minZoom: 1,
-        maxZoom: 6,
-      ),
-      lessThan(2),
-    );
-    expect(
-      autoTrackingZoom(
-        currentZoom: 2,
-        boxAreaFraction: 0.28,
-        minZoom: 1,
-        maxZoom: 6,
-      ),
-      2,
-    );
-  });
-
-  test('ML Kit rotation compensates Android device orientation', () {
-    expect(
-      cameraImageRotationDegrees(
-        sensorOrientation: 90,
-        deviceOrientation: DeviceOrientation.portraitUp,
-        lensDirection: CameraLensDirection.back,
-        isAndroid: true,
-      ),
-      90,
-    );
-    expect(
-      cameraImageRotationDegrees(
-        sensorOrientation: 90,
-        deviceOrientation: DeviceOrientation.landscapeLeft,
-        lensDirection: CameraLensDirection.back,
-        isAndroid: true,
-      ),
-      0,
-    );
-    expect(
-      cameraImageRotationDegrees(
-        sensorOrientation: 90,
-        deviceOrientation: DeviceOrientation.landscapeLeft,
-        lensDirection: CameraLensDirection.front,
-        isAndroid: true,
-      ),
-      180,
-    );
-  });
-
-  test('pet box selection prefers cat labels then best object', () {
-    final imageSize = const Size(400, 300);
-    final cat = PetBoxCandidate(
-      boundingBox: const Rect.fromLTWH(20, 20, 40, 40),
-      imageSize: imageSize,
-      label: 'Cat',
-      confidence: 0.6,
-      isCat: true,
-    );
-    final largerObject = PetBoxCandidate(
-      boundingBox: const Rect.fromLTWH(40, 40, 180, 120),
-      imageSize: imageSize,
-      label: 'Cat candidate',
-      confidence: 0.9,
-      isCat: false,
-    );
-
-    expect(selectBestPetBox([largerObject, cat]), cat);
-    expect(selectBestPetBox([largerObject]), largerObject);
-  });
-
-  test('pet box tracker clears stale detections', () {
-    final tracker = PetBoxTracker(staleAfter: const Duration(seconds: 1));
-    final detectedAt = DateTime(2026, 7, 10, 12);
-    final candidate = PetBoxCandidate(
-      boundingBox: const Rect.fromLTWH(20, 20, 100, 80),
-      imageSize: const Size(400, 300),
-      label: 'Cat',
-      confidence: 0.75,
-      isCat: true,
-    );
-
-    expect(tracker.update([candidate], now: detectedAt), candidate);
-    expect(
-      tracker.current(now: detectedAt.add(const Duration(milliseconds: 500))),
-      candidate,
-    );
-    expect(
-      tracker.current(now: detectedAt.add(const Duration(seconds: 2))),
-      isNull,
-    );
   });
 
   test('PetStreakSummary parses backend streak history', () {
@@ -720,7 +614,6 @@ void main() {
     expect(find.text('Ask Agent'), findsOneWidget);
     expect(find.text('CAT'), findsOneWidget);
     expect(find.text('DISTRESS'), findsOneWidget);
-    expect(find.text('Tracking Unavailable'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('Retake')).dy,
       lessThan(tester.getTopLeft(find.text('Save Moment')).dy),
@@ -733,11 +626,11 @@ void main() {
     expect(client.paths, ['/perception']);
     expect(client.payloads.single['emotion'], 'distress');
     expect(find.text('Capture The Meowment'), findsOneWidget);
-    expect(find.text('SCANNING FOR PET'), findsOneWidget);
+    expect(find.text('TAP PHOTO · HOLD VIDEO'), findsOneWidget);
     expect(find.byType(AgentChatScreen), findsNothing);
   });
 
-  testWidgets('replay tracking is disabled without captured samples', (
+  testWidgets('replay keeps emotion labels without tracking controls', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -753,11 +646,7 @@ void main() {
     await tester.tap(find.byTooltip('Demo capture'));
     await tester.pumpAndSettle();
 
-    final button = tester.widget<OutlinedButton>(
-      find.byKey(const Key('tracking-mode-toggle')),
-    );
-    expect(button.onPressed, isNull);
-    expect(find.text('Tracking Unavailable'), findsOneWidget);
+    expect(find.textContaining('Tracking Mode'), findsNothing);
     expect(find.text('CAT'), findsOneWidget);
     expect(find.text('DISTRESS'), findsOneWidget);
   });
