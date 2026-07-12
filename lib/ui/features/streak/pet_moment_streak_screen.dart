@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:video_player/video_player.dart';
 
 import '../../../data/services/local_moment_storage.dart';
 import '../../../data/services/pet_streak_client.dart';
@@ -853,6 +854,66 @@ class _MomentReel extends StatelessWidget {
   }
 }
 
+class _VideoFramePreview extends StatefulWidget {
+  const _VideoFramePreview({required this.videoPath});
+
+  final String videoPath;
+
+  @override
+  State<_VideoFramePreview> createState() => _VideoFramePreviewState();
+}
+
+class _VideoFramePreviewState extends State<_VideoFramePreview> {
+  VideoPlayerController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final controller = VideoPlayerController.file(File(widget.videoPath));
+    try {
+      await controller.initialize();
+      await controller.pause();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() => _controller = controller);
+    } on Object {
+      await controller.dispose();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) {
+      return Container(width: 84, height: 56, color: PetTheme.panelSoft);
+    }
+    return SizedBox(
+      width: 84,
+      height: 56,
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: controller.value.size.width,
+          height: controller.value.size.height,
+          child: VideoPlayer(controller),
+        ),
+      ),
+    );
+  }
+}
+
 class _MomentPreviewCard extends StatelessWidget {
   const _MomentPreviewCard({required this.day, required this.onTap});
 
@@ -883,14 +944,19 @@ class _MomentPreviewCard extends StatelessWidget {
                 future: LocalMomentStorage.instance.momentForDate(day.date),
                 builder: (context, snapshot) {
                   final record = snapshot.data;
-                  if (record != null && !record.isVideo) {
+                  if (record != null && record.isVideo) {
                     return ClipRRect(
                       borderRadius: BorderRadius.circular(6),
-                      child: Image.file(
-                        File(record.filePath),
-                        width: 84,
-                        height: 56,
-                        fit: BoxFit.cover,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          _VideoFramePreview(videoPath: record.filePath),
+                          const Icon(
+                            Icons.play_circle_fill,
+                            color: Colors.white,
+                            size: 26,
+                          ),
+                        ],
                       ),
                     );
                   }
@@ -948,15 +1014,63 @@ class _MomentPreviewCard extends StatelessWidget {
   }
 }
 
-class _MomentPreviewSheet extends StatelessWidget {
+class _MomentPreviewSheet extends StatefulWidget {
   const _MomentPreviewSheet({required this.day});
 
   final PetStreakDay day;
 
   @override
+  State<_MomentPreviewSheet> createState() => _MomentPreviewSheetState();
+}
+
+class _MomentPreviewSheetState extends State<_MomentPreviewSheet> {
+  VideoPlayerController? _videoController;
+  bool _loading = true;
+  LocalMomentRecord? _record;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final record = await LocalMomentStorage.instance.momentForDate(widget.day.date);
+    if (!mounted) return;
+    if (record != null && record.isVideo) {
+      final controller = VideoPlayerController.file(File(record.filePath));
+      await controller.initialize();
+      await controller.setLooping(true);
+      await controller.play();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() {
+        _record = record;
+        _videoController = controller;
+        _loading = false;
+      });
+    } else {
+      setState(() {
+        _record = record;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final day = widget.day;
     final marker = catMomentMarker(day);
     final healthLabel = day.isHealthy ? 'Healthy moment' : 'Needs attention';
+
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
@@ -964,6 +1078,34 @@ class _MomentPreviewSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator(color: PetTheme.aqua)),
+              )
+            else if (_videoController != null && _videoController!.value.isInitialized)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: AspectRatio(
+                  aspectRatio: _videoController!.value.aspectRatio,
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _videoController!.value.isPlaying
+                            ? _videoController!.pause()
+                            : _videoController!.play();
+                      });
+                    },
+                    child: VideoPlayer(_videoController!),
+                  ),
+                ),
+              )
+            else if (_record != null && !_record!.isVideo)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.file(File(_record!.filePath), fit: BoxFit.cover),
+              ),
+            const SizedBox(height: 18),
             Row(
               children: [
                 Container(
@@ -1004,8 +1146,7 @@ class _MomentPreviewSheet extends StatelessWidget {
             _PreviewFact(
               icon: Icons.camera_alt_outlined,
               label: 'Captured',
-              value:
-                  '${day.captureCount} pet moment${day.captureCount == 1 ? '' : 's'}',
+              value: '${day.captureCount} pet moment${day.captureCount == 1 ? '' : 's'}',
             ),
             const SizedBox(height: 10),
             _PreviewFact(
