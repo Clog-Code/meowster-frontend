@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 
+import '../../../data/services/local_moment_storage.dart';
 import '../../../data/services/pet_streak_client.dart';
 import '../../../domain/models/pet_streak_summary.dart';
 import '../../core/pet_theme.dart';
@@ -877,7 +879,38 @@ class _MomentPreviewCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(marker, style: const TextStyle(fontSize: 24, height: 1)),
+              FutureBuilder<LocalMomentRecord?>(
+                future: LocalMomentStorage.instance.momentForDate(day.date),
+                builder: (context, snapshot) {
+                  final record = snapshot.data;
+                  if (record != null && !record.isVideo) {
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Image.file(
+                        File(record.filePath),
+                        width: 84,
+                        height: 56,
+                        fit: BoxFit.cover,
+                      ),
+                    );
+                  }
+                  if (record != null && record.isVideo) {
+                    return Container(
+                      width: 84,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: PetTheme.panelSoft,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(
+                        Icons.play_circle_outline,
+                        color: PetTheme.aqua,
+                      ),
+                    );
+                  }
+                  return Text(marker, style: const TextStyle(fontSize: 24, height: 1));
+                },
+              ),
               const Spacer(),
               Text(
                 _shortDate(day.date),
