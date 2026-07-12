@@ -1084,12 +1084,14 @@ class _PreviewFact extends StatelessWidget {
       children: [
         Icon(icon, color: PetTheme.aqua, size: 20),
         const SizedBox(width: 10),
-        Text(label, style: const TextStyle(color: PetTheme.muted)),
-        const Spacer(),
-        Flexible(
+        SizedBox(
+          width: 90,
+          child: Text(label, style: const TextStyle(color: PetTheme.muted)),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
           child: Text(
             value,
-            textAlign: TextAlign.end,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
